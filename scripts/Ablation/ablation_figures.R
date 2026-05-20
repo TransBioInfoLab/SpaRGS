@@ -8,6 +8,34 @@ source("R/simulation.R")
 source("R/simulation_scoring.R")
 source("R/evaluation_metrics.R")
 
+
+# Required source files for Ablation figure generation
+required_files <- c(
+  "results/Ablation/abl_correlation_threshold.csv",
+  "results/Ablation/abl_bandwidths_aggregate_sum_oracle.csv",
+  "results/Ablation/abl_bandwidths_aggregate_sum_data_driven.csv",
+  "results/Ablation/abl_weight_clipping_aggregate_sum_oracle.csv",
+  "results/Ablation/abl_weight_clipping_aggregate_sum_data_driven.csv",
+  "results/Ablation/abl_spatial_graph_moran_oracle.csv",
+  "results/Ablation/abl_block_stability_autocorrelation_oracle.csv"
+)
+
+missing_files <- required_files[!file.exists(required_files)]
+
+if (length(missing_files) > 0) {
+  stop(
+    "\nMissing Ablation source files required for figure generation:\n",
+    paste0("  - ", missing_files, collapse = "\n"),
+    "\n\nThese large intermediate files are not included in the lightweight GitHub repository.\n",
+    "To regenerate them, run:\n\n",
+    "  Rscript scripts/Ablation/ablation_analysis.R\n",
+    "After these files are generated, rerun:\n\n",
+    "  Rscript scripts/Ablation/ablation_figures.R\n\n",
+    "Alternatively, use the archived full analysis outputs if provided separately.\n",
+    call. = FALSE
+  )
+}
+
 # ---------------------------
 # paths
 # ---------------------------
