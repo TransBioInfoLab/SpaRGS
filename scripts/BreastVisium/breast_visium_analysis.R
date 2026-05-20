@@ -24,6 +24,16 @@ matrixdir <- file.path(data_dir, "1160920F_filtered_count_matrix")
 imgdir    <- file.path(data_dir, "1160920F_spatial")
 metadir   <- file.path(data_dir, "1160920F_metadata.csv")
 
+# check input
+if (!dir.exists(data_dir)) {
+  stop(
+    "Breast Visium data directory not found: ", data_dir, "\n",
+    "Please download the public 10x Visium breast cancer dataset ",
+    "and place it in data/breast_visium/."
+  )
+}
+
+
 # ---------------------------
 # load data
 # ---------------------------
