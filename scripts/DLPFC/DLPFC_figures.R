@@ -5,7 +5,35 @@ suppressPackageStartupMessages ({
   library(SpatialExperiment); library(stringr); library(scales); 
   library(stringr); library(viridis)
 })
+
 source("R/sgsva_score.R")
+
+
+# Required source files for DLPFC figure generation
+required_files <- c(
+  "results/DLPFC/full_results_12_samples.rds",
+  "results/DLPFC/hex150_meta_stouffer_res.csv",
+  "results/DLPFC/hex200_meta_stouffer_res.csv",
+  "results/DLPFC/hex300_meta_stouffer_res.csv",
+  "results/DLPFC/mc_meta_stouffer_res.csv"
+)
+
+missing_files <- required_files[!file.exists(required_files)]
+
+if (length(missing_files) > 0) {
+  stop(
+    "\nMissing DLPFC source files required for figure generation:\n",
+    paste0("  - ", missing_files, collapse = "\n"),
+    "\n\nThese large intermediate files are not included in the lightweight GitHub repository.\n",
+    "To regenerate them, run:\n\n",
+    "  Rscript scripts/DLPFC/DLPFC_analysis.R\n",
+    "After these files are generated, rerun:\n\n",
+    "  Rscript scripts/DLPFC/DLPFC_figures.R\n\n",
+    "Alternatively, use the archived full analysis outputs if provided separately.\n",
+    call. = FALSE
+  )
+}
+
 
 # ---------------------------
 # paths
