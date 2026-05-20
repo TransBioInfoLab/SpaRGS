@@ -8,6 +8,33 @@ source("R/simulation.R")
 source("R/simulation_scoring.R")
 source("R/evaluation_metrics.R")
 
+
+# Required source files for Simulation figure generation
+required_files <- c(
+  "results/Simulation/AUROC_spearman_runtime_all_replicates_oracle.csv",
+  "results/Simulation/auroc_aggregate_sum_oracle.csv",
+  "results/Simulation/spearman_aggregate_sum_oracle.csv",
+  "results/Simulation/delongtest_aggregate_sum_oracle.csv",
+  "results/Simulation/moran_geary_aggregate_sum_oracle.csv",
+  "results/Simulation/simulation_replicate1.rds"
+)
+
+missing_files <- required_files[!file.exists(required_files)]
+
+if (length(missing_files) > 0) {
+  stop(
+    "\nMissing Simulation source files required for figure generation:\n",
+    paste0("  - ", missing_files, collapse = "\n"),
+    "\n\nThese large intermediate files are not included in the lightweight GitHub repository.\n",
+    "To regenerate them, run:\n\n",
+    "  Rscript scripts/Simulation/simulation_analysis.R\n",
+    "After these files are generated, rerun:\n\n",
+    "  Rscript scripts/Simulation/simulation_figures.R\n\n",
+    "Alternatively, use the archived full analysis outputs if provided separately.\n",
+    call. = FALSE
+  )
+}
+
 # ---------------------------
 # paths
 # ---------------------------
