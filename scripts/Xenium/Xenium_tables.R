@@ -4,6 +4,32 @@ library(hexbin)
 
 source("R/sgsva_score.R")
 
+# Required source files for Xenium table generation
+required_files <- c(
+  "results/xenium/sgsva_score_res.rds",
+  "results/xenium/gsva_score.csv",
+  "results/xenium/gsva_smooth_score.csv",
+  "results/xenium/xenium_cell_type_meta_data.csv",
+  "results/xenium/xenium_coordinates.csv",
+  "results/xenium/moran_geary_three_methods.csv"
+)
+
+missing_files <- required_files[!file.exists(required_files)]
+
+if (length(missing_files) > 0) {
+  stop(
+    "\nMissing Xenium source files required for table generation:\n",
+    paste0("  - ", missing_files, collapse = "\n"),
+    "\n\nThese large intermediate files are not included in the lightweight GitHub repository.\n",
+    "To regenerate them, run:\n\n",
+    "  Rscript scripts/Xenium/Xenium_analysis.R\n",
+    "After these files are generated, rerun:\n\n",
+    "  Rscript scripts/Xenium/Xenium_tables.R\n\n",
+    "Alternatively, use the archived full analysis outputs if provided separately.\n",
+    call. = FALSE
+  )
+}
+
 # paths
 project_dir <- "."
 results_dir <- file.path(project_dir, "results", "xenium")
