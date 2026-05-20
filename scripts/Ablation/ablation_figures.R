@@ -11,13 +11,13 @@ source("R/evaluation_metrics.R")
 
 # Required source files for Ablation figure generation
 required_files <- c(
-  "results/Ablation/abl_correlation_threshold.csv",
-  "results/Ablation/abl_bandwidths_aggregate_sum_oracle.csv",
-  "results/Ablation/abl_bandwidths_aggregate_sum_data_driven.csv",
-  "results/Ablation/abl_weight_clipping_aggregate_sum_oracle.csv",
-  "results/Ablation/abl_weight_clipping_aggregate_sum_data_driven.csv",
-  "results/Ablation/abl_spatial_graph_moran_oracle.csv",
-  "results/Ablation/abl_block_stability_autocorrelation_oracle.csv"
+  "results/ablation/abl_correlation_threshold.csv",
+  "results/ablation/abl_bandwidths_aggregate_sum_oracle.csv",
+  "results/ablation/abl_bandwidths_aggregate_sum_data_driven.csv",
+  "results/ablation/abl_weight_clipping_aggregate_sum_oracle.csv",
+  "results/ablation/abl_weight_clipping_aggregate_sum_data_driven.csv",
+  "results/ablation/abl_spatial_graph_moran_oracle.csv",
+  "results/ablation/abl_block_stability_autocorrelation_oracle.csv"
 )
 
 missing_files <- required_files[!file.exists(required_files)]
