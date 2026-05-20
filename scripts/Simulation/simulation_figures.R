@@ -11,12 +11,12 @@ source("R/evaluation_metrics.R")
 
 # Required source files for Simulation figure generation
 required_files <- c(
-  "results/Simulation/AUROC_spearman_runtime_all_replicates_oracle.csv",
-  "results/Simulation/auroc_aggregate_sum_oracle.csv",
-  "results/Simulation/spearman_aggregate_sum_oracle.csv",
-  "results/Simulation/delongtest_aggregate_sum_oracle.csv",
-  "results/Simulation/moran_geary_aggregate_sum_oracle.csv",
-  "results/Simulation/simulation_replicate1.rds"
+  "results/simulation/AUROC_spearman_runtime_all_replicates_oracle.csv",
+  "results/simulation/auroc_aggregate_sum_oracle.csv",
+  "results/simulation/spearman_aggregate_sum_oracle.csv",
+  "results/simulation/delongtest_aggregate_sum_oracle.csv",
+  "results/simulation/moran_geary_aggregate_sum_oracle.csv",
+  "results/simulation/simulation_replicate1.rds"
 )
 
 missing_files <- required_files[!file.exists(required_files)]
