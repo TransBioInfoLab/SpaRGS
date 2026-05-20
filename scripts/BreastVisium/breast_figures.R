@@ -8,6 +8,33 @@ suppressPackageStartupMessages({
 source("R/sgsva_score.R")
 source("R/spatial_permutation.R")
 
+
+# Required source files for Breast Visium figure generation
+required_files <- c(
+  "results/breast_visium/bc_obj.rds",
+  "results/breast_visium/block_res.rds",
+  "results/breast_visium/moranmc_res.rds",
+  "results/breast_visium/sgsva_scores.csv",
+  "results/breast_visium/gsva_scores.csv"
+)
+
+missing_files <- required_files[!file.exists(required_files)]
+
+if (length(missing_files) > 0) {
+  stop(
+    "\nMissing Breast Visium source files required for figure generation:\n",
+    paste0("  - ", missing_files, collapse = "\n"),
+    "\n\nThese large intermediate files are not included in the lightweight GitHub repository.\n",
+    "To regenerate them, run:\n\n",
+    "  Rscript scripts/BreastVisium/breast_analysis.R\n",
+    "  Rscript scripts/BreastVisium/breast_celltype_anchoring.R\n",
+    "After these files are generated, rerun:\n\n",
+    "  Rscript scripts/BreastVisium/breast_figures.R\n\n",
+    "Alternatively, use the archived full analysis outputs if provided separately.\n",
+    call. = FALSE
+  )
+}
+
 # ---------------------------
 # paths
 # ---------------------------
