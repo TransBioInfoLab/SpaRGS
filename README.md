@@ -67,7 +67,6 @@ Session information is saved in `results/session_info.txt`. A curated list of pa
 | Breast Visium | Zenodo accession 4739739 | `data/breast_visium/` |
 | DLPFC Visium | `spatialLIBD` package | downloaded programmatically |
 | Xenium FFPE breast cancer | 10x Genomics public Xenium FFPE with 5k Pan-Tissue and Pathways dataset | `data/xenium/` |
-
 Exact dataset accessions and vendor download links are provided in Supplementary Table S11.
 
 ### Breast Visium
@@ -126,6 +125,10 @@ Rscript scripts/run_example_xenium.R
 ```
 Minimal end-to-end workflows are derived from Breast Visium dataset and Xenium FFPE dataset, outputs files are stored in `results/example`.
 
+
+### Large figure-source files
+
+Some manuscript figures require large intermediate analysis objects, such as Seurat objects, full pathway-score matrices, or permutation result objects. These files are not included in the lightweight GitHub repository. If they are missing, run the corresponding full analysis script first. 
 
 
 
