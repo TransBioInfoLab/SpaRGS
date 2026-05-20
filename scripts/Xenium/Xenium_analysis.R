@@ -21,6 +21,15 @@ results_dir <- file.path(project_dir, "results", "xenium")
 fig_dir <- file.path(project_dir, "results", "figures")
 dir.create(results_dir, recursive = TRUE, showWarnings = FALSE)
 
+# check input
+if (!dir.exists(data_dir)) {
+  stop(
+    "Xenium data directory not found: ", data_dir, "\n",
+    "Please download the public 10x Genomics Xenium FFPE breast cancer dataset ",
+    "and place it in data/xenium/."
+  )
+}
+
 
 # ---------------------------
 # load data
