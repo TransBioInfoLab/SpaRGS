@@ -5,12 +5,6 @@ echo "Running a minimal example..."
 Rscript scripts/run_example_visium.R
 Rscript scripts/run_example_xenium.R
 
-echo "Generating all figures..."
-Rscript run_all_figures.R
-
-echo "Generating all tables..."
-Rscript run_all_tables.R
-
 echo "Running simulation analyses..."
 Rscript scripts/Simulation/simulation_analysis.R
 
@@ -26,6 +20,12 @@ Rscript scripts/DLPFC/DLPFC_analysis.R
 
 echo "Running Xenium analyses..."
 Rscript scripts/Xenium/Xenium_analysis.R
+
+echo "Generating all figures..."
+Rscript run_all_figures.R
+
+echo "Generating all tables..."
+Rscript run_all_tables.R
 
 echo "Saving session information..."
 Rscript scripts/session_info.R
