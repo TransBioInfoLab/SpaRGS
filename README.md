@@ -67,6 +67,7 @@ Session information is saved in `results/session_info.txt`. A curated list of pa
 | Breast Visium | Zenodo accession 4739739 | `data/breast_visium/` |
 | DLPFC Visium | `spatialLIBD` package | downloaded programmatically |
 | Xenium FFPE breast cancer | 10x Genomics public Xenium FFPE with 5k Pan-Tissue and Pathways dataset | `data/xenium/` |
+
 Exact dataset accessions and vendor download links are provided in Supplementary Table S11.
 
 ### Breast Visium
