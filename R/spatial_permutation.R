@@ -49,7 +49,7 @@ spatial_permutation <- function(
     if (mode == "delaunay") {
       nb <- spdep::tri2nb(coords)
     } else {
-      knn_obj <- spdep::knearneigh(coords_bin, k = k)
+      knn_obj <- spdep::knearneigh(coords, k = k)
       nb <- spdep::knn2nb(knn_obj)
     }
   }
@@ -70,9 +70,10 @@ spatial_permutation <- function(
         x <- as.numeric(scores[pathway,])
         
         # get moran.mc/geary.mc results
-        set.seed(seed_permutation)
-        out_moran_mc <- perm_with_early_stop(stat_moran, x, lw)
-        out_geary_mc <- perm_with_early_stop(stat_geary, x, lw)
+        out_moran_mc <- perm_with_early_stop(stat_fun = stat_moran, x = x, listw = lw, 
+                                             t_min = n_perm_min, t_max = n_perm_max, alpha = alpha)
+        out_geary_mc <- perm_with_early_stop(stat_fun = stat_geary, x = x, listw = lw,
+                                             t_min = n_perm_min, t_max = n_perm_max, alpha = alpha)
         
         # convert results into data.frame
         mc_pathway_results[[p]] <- data.frame(
@@ -95,7 +96,7 @@ spatial_permutation <- function(
           up = length(balanced_sets[[pathway]]$U),
           down = length(balanced_sets[[pathway]]$D),
           cv_clip = weight_clip, global_sigma = sigma_global,
-          graph = mode, cor_min = cor_min,
+          graph = mode, cor_min = cor_min, one_sided = one_sided,
           stringsAsFactors = FALSE
         )
         
@@ -173,9 +174,10 @@ spatial_permutation <- function(
         x <- as.numeric(scores[pathway,])
         
         # get hex-block results
-        set.seed(seed_permutation)
-        out_moran_hex <- perm_with_early_stop(stat_moran_hex, x, lw, hex_id)
-        out_geary_hex <- perm_with_early_stop(stat_geary_hex, x, lw, hex_id)
+        out_moran_hex <- perm_with_early_stop(stat_moran_hex, x, lw, hex_id,
+                                              t_min = n_perm_min, t_max = n_perm_max, alpha = alpha)
+        out_geary_hex <- perm_with_early_stop(stat_geary_hex, x, lw, hex_id,
+                                              t_min = n_perm_min, t_max = n_perm_max, alpha = alpha)
         
         # convert results into data.frame
         hex_pathway_results[[p]] <- data.frame(
@@ -199,7 +201,7 @@ spatial_permutation <- function(
           up = length(balanced_sets[[pathway]]$U),
           down = length(balanced_sets[[pathway]]$D),
           cv_clip = weight_clip, global_sigma = sigma_global,
-          graph = mode, cor_min = cor_min,
+          graph = mode, cor_min = cor_min, one_sided = one_sided,
           stringsAsFactors = FALSE
         )
         
@@ -271,9 +273,7 @@ spatial_permutation <- function(
     
     # no early stopping
     if (("moran_mc" %in% perm_methods) & ("geary_mc" %in% perm_methods)) {
-      set.seed(seed_permutation)
-      mc_perm_res <- run_moran_geary(scores, w = lw, n_perm = B,
-                                     balanced_sets, pathway_sigmas)
+      mc_perm_res <- run_moran_geary(scores, w = lw, n_perm = B, balanced_sets)
       mc_results_df <- mc_perm_res$res
       mc_perm_null_results <- mc_perm_res$perm_null_res
       
@@ -285,7 +285,6 @@ spatial_permutation <- function(
     }
     
     if ("hex_block" %in% perm_methods) {
-      set.seed(seed_permutation)
       hex_perm_res <- hex_block_perm(scores, lw, coords, sets = balanced_sets, 
                                      block_size = hex_cellsize, B = B)
       hex_results_df <- hex_perm_res$res
@@ -299,7 +298,7 @@ spatial_permutation <- function(
     }
   }
   
-  return(permutation_results)
+  return(list(permutation_results = permutation_results))
 }
 
 # --- helper function ---
@@ -328,7 +327,6 @@ hex_block_perm <- function(z, lw, coords, sets, block_size=200,
     up = NA_integer_, down = NA_integer_,
     block_size = block_size, B = B,
     cv_clip = weight_clip, sigma_global = sigma_global,
-    optimal_sigma = NA_real_,
     stringsAsFactors = FALSE
   )
   
@@ -374,7 +372,6 @@ hex_block_perm <- function(z, lw, coords, sets, block_size=200,
     res$p_geary[i] <- mean(c(obs_C, perm_C)<=obs_C)
     res$up[i] <- length(sets[[pth]]$U)
     res$down[i] <- length(sets[[pth]]$D)
-    res$optimal_sigma[i] <- pathway_sigmas[[pth]]$median_sigma
     
     null_hist[[pth]] <- list(moran_perm = perm_I, geary_perm = perm_C)
   }
@@ -391,12 +388,11 @@ hex_block_perm <- function(z, lw, coords, sets, block_size=200,
 }
 
 # moran.mc/geary.mc
-run_moran_geary <- function(scores, w, B = 1000,
+run_moran_geary <- function(scores, w, n_perm,
                             sets, weight_clip=0.99, sigma_global=207) {
   # Extract scores for selected pathways
   n_pathways <- nrow(scores)
   paths <- rownames(scores)
-  n_perm <- B
   null_hist <- vector("list", length(paths))
   names(null_hist) <- paths
   
@@ -411,7 +407,7 @@ run_moran_geary <- function(scores, w, B = 1000,
     null_mean_geary = NA_real_, null_sd_geary = NA_real_,
     up = NA_real_, down = NA_real_,
     B = n_perm, cv_clip = weight_clip,
-    global_sigma = sigma_global, optimal_sigma = NA_real_,
+    global_sigma = sigma_global,
     stringsAsFactors = FALSE
   )
   
@@ -450,7 +446,6 @@ run_moran_geary <- function(scores, w, B = 1000,
     
     results$up[i] <- length(sets[[pth]]$U)
     results$down[i] <- length(sets[[pth]]$D)
-    results$optimal_sigma[i] <- pathway_sigmas[[pth]]$median_sigma
     
     null_hist[[pth]] <- list(
       perm_moran = sim_moran, perm_geary = sim_geary

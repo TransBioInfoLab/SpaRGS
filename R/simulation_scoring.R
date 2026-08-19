@@ -6,6 +6,7 @@
 # Gaussian kernel smoothing
 smooth_expr <- function(expr, coords, sigma=15, 
                         mode=c("delaunay","knn"), k=6) {
+  mode <- match.arg(mode)
   n <- nrow(coords)
   coords <- as.matrix(coords)
   if (mode=="delaunay") {
@@ -55,6 +56,12 @@ derive_direction_correlation <- function(expr, gene_sets, min_cor = 0.1, min_gen
     X <- t(expr[genes, , drop=FALSE])
     pc <- prcomp(X, center=TRUE, scale.=FALSE)
     eig <- pc$x[,1]
+    
+    # sign anchoring
+    anchor <- rowMeans(X)                       # mean pathway expression / location
+    a_cor  <- suppressWarnings(cor(eig, anchor, method = "spearman"))
+    if (!is.na(a_cor) && a_cor < 0) eig <- -eig
+    
     cors <- apply(X, 2, function(z) suppressWarnings(cor(z, eig, method="spearman")))
     pos <- names(cors)[cors >= min_cor]
     neg <- names(cors)[cors <= -min_cor]
@@ -63,7 +70,9 @@ derive_direction_correlation <- function(expr, gene_sets, min_cor = 0.1, min_gen
     if (length(U)+length(D) < min_genes) next
     kept[[nm]] <- list(U=U, D=D)
   }
-  list(sets=kept)
+  list(
+    sets = kept
+  )
 }
 
 # Balancing helper function
@@ -140,7 +149,7 @@ z_normalization <- function(scores) {
 run_sgsva <- function(counts, coords, sets, 
                       # smoothing/weighting
                       no_smoothing = FALSE, # remove smoothing
-                      mode = "delaunay", k = 6, # method for getting neighborhood
+                      mode = c("delaunay","knn"), k = 6, # method for getting neighborhood
                       sigma_global = 150, # global smoothing bandwidth (um in lowres coords)
                       floor_frac = 0.05, # min non-zero fraction for gene filtering
                       weight_clip = 0.99, # CV weight clipping quantile
@@ -155,6 +164,7 @@ run_sgsva <- function(counts, coords, sets,
   # minimal stand -in: Gaussian - smooth logCPM then rank - based scoring (U minus D)
   directionality <- match.arg(directionality)
   one_sided <- match.arg(one_sided)
+  mode <- match.arg(mode)
   
   G <- nrow(counts); N <- ncol(counts)
   lib <- colSums(counts)+1
@@ -204,9 +214,7 @@ run_sgsva <- function(counts, coords, sets,
 }
 
 # ---- GSVA ----
-run_gsva <- function(expr, updown) {
-  sets <- lapply(names(updown), function(p) unique(c(updown[[p]]$U, updown[[p]]$D)))
-  names(sets) <- names(updown)
+run_gsva <- function(expr, sets) {
   params <- gsvaParam(
     expr, sets
   )
@@ -215,17 +223,21 @@ run_gsva <- function(expr, updown) {
 }
 
 # ---- AUCell ----
-run_aucell <- function(expr, updown) {
-  sets <- lapply(names(updown), function(p) unique(c(updown[[p]]$U, updown[[p]]$D)))
-  names(sets) <- names(updown)
+run_aucell <- function(expr, sets) {
   rk <- AUCell_buildRankings(expr, plotStats = FALSE, verbose = FALSE)
   AUCell::getAUC(AUCell_calcAUC(sets, rk))
 }
 
+# ---- UCell ----
+run_ucell <- function(expr, sets) {
+  score <- UCell::ScoreSignatures_UCell(as.matrix(expr), features = sets)
+  ucell_scores <- t(score)
+  rownames(ucell_scores) <- names(sets)
+  ucell_scores
+}
+
 # ---- ssGSEA ----
-run_ssgsea <- function(expr, updown) {
-  sets <- lapply(names(updown), function(p) unique(c(updown[[p]]$U, updown[[p]]$D)))
-  names(sets) <- names(updown)
+run_ssgsea <- function(expr, sets) {
   params <- ssgseaParam(
     expr, sets
   )
@@ -234,9 +246,7 @@ run_ssgsea <- function(expr, updown) {
 }
 
 # ---- AddModuleScore ----
-run_addmod <- function(counts, updown, nbin = 12, ctrl = 10) {
-  sets <- lapply(names(updown), function(p) unique(c(updown[[p]]$U, updown[[p]]$D)))
-  names(sets) <- names(updown)
+run_addmod <- function(counts, sets, nbin = 12, ctrl = 10) {
   # Convert to Seurat object temporarily
   expr_full <- as(as.matrix(counts), "dgCMatrix")
   seu <- Seurat::CreateSeuratObject(counts = expr_full)
