@@ -9,32 +9,6 @@ library(hexbin)
 source("R/sgsva_score.R")
 source("R/spatial_permutation.R")
 
-
-# Required source files for Xenium figure generation
-required_files <- c(
-  "results/xenium/sgsva_score_res.rds",
-  "results/xenium/gsva_score.csv",
-  "results/xenium/gsva_smooth_score.csv",
-  "results/xenium/xenium_cell_type_meta_data.csv",
-  "results/xenium/xenium_coordinates.csv"
-)
-
-missing_files <- required_files[!file.exists(required_files)]
-
-if (length(missing_files) > 0) {
-  stop(
-    "\nMissing Xenium source files required for figure generation:\n",
-    paste0("  - ", missing_files, collapse = "\n"),
-    "\n\nThese large intermediate files are not included in the lightweight GitHub repository.\n",
-    "To regenerate them, run:\n\n",
-    "  Rscript scripts/Xenium/Xenium_analysis.R\n",
-    "After these files are generated, rerun:\n\n",
-    "  Rscript scripts/Xenium/Xenium_figures.R\n\n",
-    "Alternatively, use the archived full analysis outputs if provided separately.\n",
-    call. = FALSE
-  )
-}
-
 # ---------------------------
 # paths
 # ---------------------------
@@ -42,7 +16,6 @@ project_dir <- "."
 data_dir <- file.path(project_dir, "data", "xenium")
 results_dir <- file.path(project_dir, "results", "xenium")
 fig_dir <- file.path(project_dir, "results", "figures")
-dir.create(results_dir, recursive = TRUE, showWarnings = FALSE)
 
 
 # ---------------------------
@@ -73,9 +46,19 @@ rownames(meta) <- meta$X
 meta$X <- NULL
 colnames(meta) <- gsub("\\.", " ", colnames(meta))
 # Xenium coordinates
-coords <- read.csv(file.path(results_dir, "xenium_coordinates.csv"))
-rownames(coords) <- coords$X
-coords$X <- NULL
+xenium_data <- readRDS(file.path(results_dir, "xenium_process_data.rds"))
+coords <- xenium_data$coords
+
+ct_cols <- grep("^GG_", colnames(meta), value=TRUE)
+resolve_col <- function(pattern, cols) {
+  hit <- grep(pattern, cols, value = TRUE)
+  if (length(hit) != 1) {
+    stop("Could not resolve column for pattern: ", pattern,
+         "\nHits: ", paste(hit, collapse = ", "))
+  }
+  hit
+}
+
 
 # ---------------------------
 # Built hex bins
@@ -209,7 +192,7 @@ plot_bin_maps <- function(
       high = "#D7301F",
       limits = lim_ct,
       oob = squish,
-      name = "Cell-type\nscore"
+      name = "Module score"
     ) +
     labs(title = ct_title) +
     map_theme
@@ -262,40 +245,150 @@ map_chemokine_main <- plot_bin_maps(bin_scores_chemokine, ct_col = "GG_T cells_m
                                    ct_title  = "T-cell module (bin mean)")
 map_cellcycle_main <- plot_bin_maps(bin_scores_cellcycle, ct_col = "GG_Breast cancer_mean",
                                    ct_title = "Breast cancer module (bin mean)")
-row1_titled <- map_cellcycle_main + plot_annotation(
-  title = "KEGG Cell Cycle",
-  theme = theme(plot.title = element_text(size = 16, face = "bold", hjust = 0.5))
+
+
+# pathway-cell-type module concordance heatmap
+prespecified_xenium_pairs <- tibble::tribble(
+  ~pathway,                              ~anchor_pattern,       ~anchor_label,
+  "KEGG_CELL_CYCLE",                     "Breast cancer",       "Cell cycle - breast cancer",
+  "KEGG_CHEMOKINE_SIGNALING_PATHWAY",    "T cells",             "Chemokine - T cells",
+  "KEGG_VEGF_SIGNALING_PATHWAY",         "Endothelial",         "VEGF - endothelial",
+  "KEGG_FOCAL_ADHESION",                 "Fibroblasts",         "Focal adhesion - fibroblasts"
 )
-row2_titled <- map_chemokine_main + plot_annotation(
-  title = "KEGG Chemokine Signaling Pathway",
-  theme = theme(plot.title = element_text(size = 16, face = "bold", hjust = 0.5))
+
+compute_pair_concordance <- function(pathway, anchor_pattern) {
+  ct_col <- resolve_col(anchor_pattern, ct_cols)
+  ct_mean <- paste0(ct_col, "_mean")
+  
+  bin_scores <- aggregate_bin_level(pathway, ct_col) %>%
+    mutate(sGSVA = sgsva_mean,
+           GSVA = gsva_mean,
+           `GSVA-smoothed` = smooth_mean)
+  
+  method_cols <- c("sGSVA", "GSVA", "GSVA-smoothed")
+  
+  bind_rows(lapply(method_cols, function(m) {
+    rho <- suppressWarnings(
+      cor(
+        bin_scores[[m]],
+        bin_scores[[ct_mean]],
+        method = "spearman",
+        use = "complete.obs"
+      )
+    )
+    
+    tibble::tibble(
+      pathway = pathway,
+      anchor = anchor_pattern,
+      method = m,
+      signed_rho = rho,
+      abs_rho = abs(rho),
+      n_bins = sum(is.finite(bin_scores[[m]]) & is.finite(bin_scores[[ct_mean]]))
+    )
+  }))
+}
+
+xenium_concordance <- bind_rows(
+  lapply(seq_len(nrow(prespecified_xenium_pairs)), function(i) {
+    out <- compute_pair_concordance(
+      prespecified_xenium_pairs$pathway[i],
+      prespecified_xenium_pairs$anchor_pattern[i]
+    )
+    out$anchor_label <- prespecified_xenium_pairs$anchor_label[i]
+    out
+  })
 )
-comb_map <- wrap_plots(
-  wrap_elements(panel = row1_titled),
-  wrap_elements(panel = row2_titled),
-  ncol = 1,
-  heights = c(1, 1)
+
+p_xenium_concordance <- xenium_concordance %>%
+  mutate(
+    method = factor(method, levels = c("sGSVA", "GSVA", "GSVA-smoothed")),
+    anchor_label = factor(anchor_label, levels = rev(unique(anchor_label))),
+    signed_label = sprintf("%+.2f", signed_rho)
+  ) %>%
+  ggplot(aes(x = method, y = anchor_label, fill = abs_rho)) +
+  geom_tile(color = "white", linewidth = 0.7) +
+  geom_text(aes(label = signed_label), size = 3.8) +
+  scale_fill_gradient(
+    limits = c(0, 1),
+    low = "white",
+    high = "steelblue",
+    oob = scales::squish,
+    name = expression("|Spearman " * rho * "|")
+  ) +
+  labs(
+    x = NULL,
+    y = NULL,
+    title = "Magnitude of pathway-module spatial concordance"
+  ) +
+  theme_bw(base_size = 11) +
+  theme(
+    axis.text.x = element_text(angle = 25, hjust = 1),
+    panel.grid = element_blank(),
+    plot.title = element_text(
+      size = 15,
+      face = "bold",
+      hjust = 0.5,
+      margin = margin(b = 4)
+    ),
+    plot.margin = margin(4, 4, 4, 4)
+  )
+
+
+# Panel title themes
+row_title_theme <- theme(
+  plot.title = element_text(
+    size = 16,
+    face = "bold",
+    hjust = 0.5,
+    margin = margin(b = 6)
+  )
+)
+
+# Row titles
+row_cellcycle_clean <- map_cellcycle_main +
+  patchwork::plot_annotation(
+    title = "KEGG Cell Cycle",
+    theme = row_title_theme
+  )
+
+row_chemokine_clean <- map_chemokine_main +
+  patchwork::plot_annotation(
+    title = "KEGG Chemokine Signaling Pathway",
+    theme = row_title_theme
+  )
+heatmap_row <- (
+  patchwork::plot_spacer() |
+    p_xenium_concordance |
+    patchwork::plot_spacer()
 ) +
-  plot_annotation(tag_levels = "A") &
-  theme(plot.tag = element_text(size = 18, face = "bold"))
+  patchwork::plot_layout(
+    widths = c(0.60, 2.80, 0.60)
+  )
+
+fig_xenium_main <- (
+  patchwork::wrap_elements(full = heatmap_row) /
+    patchwork::wrap_elements(full = row_cellcycle_clean) /
+    patchwork::wrap_elements(full = row_chemokine_clean)
+) +
+  patchwork::plot_layout(
+    heights = c(0.90, 1.15, 1.15)
+  ) +
+  patchwork::plot_annotation(
+    tag_levels = "A"
+  ) &
+  theme(
+    plot.background = element_rect(
+      fill = "white",
+      color = NA
+    ),
+    plot.tag = element_text(
+      size = 18,
+      face = "bold"
+    ),
+    plot.tag.position = c(0.01, 0.98),
+    plot.margin = margin(6, 6, 6, 6)
+  )
+
 ggsave(filename=file.path(fig_dir, "Fig6_Xenium_main.pdf"),
-       plot=comb_map, width = 12, height = 10)
-
-
-
-# -----------------------------
-# Xenium supplementary figures
-# -----------------------------
-# bin-level scatter plots
-scatter_cellcycle <- plot_bin_scatter(bin_scores_cellcycle, ct_col = "GG_Breast cancer_mean",
-                                      ct_label = "Breast cancer module",
-                                      pathway_name = "KEGG cell cycle")
-scatter_chemokine <- plot_bin_scatter(bin_scores_chemokine, ct_col = "GG_T cells_mean",
-                                      ct_label = "T-cell module",
-                                      pathway_name = "KEGG chemokine signaling pathway")
-comb_scatter <- scatter_cellcycle/scatter_chemokine +
-  plot_annotation(tag_levels = "A") +
-  plot_layout(guides = "collect")
-ggsave(filename=file.path(fig_dir, "supplement_Fig_S11_Xenium_scatter.pdf"),
-       plot=comb_scatter, width = 12, height = 12)
+       plot=fig_xenium_main, width = 12, height = 13)
 
