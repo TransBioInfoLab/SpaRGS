@@ -53,6 +53,7 @@ names(spe_list) <- sample_ids
 
 # load full score results
 full_res <- readRDS(file.path(results_dir, "full_results_12_samples.rds"))
+dlpfc_preprocessed <- readRDS(file.path(results_dir, "DLPFC_preprocess.rds"))
 
 # load meta analysis results
 hex150_meta <- read.csv(file.path(results_dir, "hex150_meta_stouffer_res.csv"))
@@ -78,12 +79,12 @@ balanced_sets <- sgsva_res$gene_sets
 # ---------------------------
 pretty_kegg_name <- function(x) {
   x %>%
-    str_replace("^KEGG_", "") %>%
-    str_replace_all("_", " ") %>%
-    str_to_title()
+    stringr::str_replace("^KEGG_", "") %>%
+    stringr::str_replace_all("_", " ") %>%
+    stringr::str_to_title()
 }
 pretty_kegg_short <- function(x) {
-  case_when(
+  dplyr::case_when(
     x == "KEGG_CALCIUM_SIGNALING_PATHWAY" ~ "Calcium signaling",
     x == "KEGG_AXON_GUIDANCE" ~ "Axon guidance",
     x == "KEGG_LONG_TERM_POTENTIATION" ~ "Long-term potentiation",
@@ -98,50 +99,105 @@ pretty_kegg_short <- function(x) {
 
 # generate spatial map
 get_spatial_map <- function(z_sgsva, z_gsva, coords, pathway) {
-  coords$score_sgsva <- as.numeric(z_sgsva[pathway, ])
-  coords$score_gsva <- as.numeric(z_gsva[pathway, ])
-  lims <- quantile(c(coords$score_sgsva, coords$score_gsva), probs = c(0.02, 0.98), na.rm = TRUE)
+  stopifnot(pathway %in% rownames(z_sgsva))
+  stopifnot(pathway %in% rownames(z_gsva))
+  stopifnot(all(coords$spot %in% colnames(z_sgsva)))
+  stopifnot(all(coords$spot %in% colnames(z_gsva)))
+  
+  coords <- coords %>%
+    dplyr::mutate(
+      score_sgsva = as.numeric(z_sgsva[pathway, spot]),
+      score_gsva  = as.numeric(z_gsva[pathway, spot])
+    )
+  
+  lim_max <- quantile(
+    abs(c(coords$score_sgsva, coords$score_gsva)),
+    probs = 0.98,
+    na.rm = TRUE
+  )
+  lims <- c(-lim_max, lim_max)
+  
   pathway_title <- pretty_kegg_short(pathway)
   
-  p1 <- ggplot(coords, aes(x, y, color = pmin(pmax(score_sgsva, lims[1]), lims[2]))) +
-    geom_point(size = 1.6) +
-    viridis::scale_color_viridis(option = "C", limits = lims, name = "sGSVA") +
-    scale_y_reverse() + coord_fixed() + theme_void() +
-    ggtitle(paste0(pathway_title, "-sGSVA"))
+  base_map <- function(score_col, title) {
+    ggplot(coords, aes(x = x, y = y, color = .data[[score_col]])) +
+      geom_point(size = 1.6) +
+      scale_color_gradientn(
+        colors = c("#313695", "#ffffbf", "#a50026"),
+        limits = lims,
+        oob = scales::squish,
+        name = "z-score"
+      ) +
+      scale_y_reverse() +
+      coord_fixed() +
+      theme_void() +
+      ggtitle(title) +
+      theme(
+        plot.title = element_text(size = 11, face = "bold", hjust = 0.5),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 8)
+      )
+  }
   
-  p2 <- ggplot(coords, aes(x, y, color = pmin(pmax(score_gsva, lims[1]), lims[2]))) +
-    geom_point(size = 1.6) +
-    viridis::scale_color_viridis(option = "C", limits = lims, name = "GSVA") +
-    scale_y_reverse() + coord_fixed() + theme_void() +
-    ggtitle(paste0(pathway_title, "-GSVA"))
-  p1 + p2 + plot_layout(ncol = 2)
+  p1 <- base_map("score_sgsva", paste0(pathway_title, " - sGSVA"))
+  p2 <- base_map("score_gsva",  paste0(pathway_title, " - GSVA"))
+  
+  p1 + p2 + patchwork::plot_layout(ncol = 2, guides = "collect")
 }
 
 # violin plots by layer
 plot_violin <- function(z_sgsva, z_gsva, coords, pathway) {
-  coords$score_sgsva <- as.numeric(z_sgsva[pathway,])
-  coords$score_gsva <- as.numeric(z_gsva[pathway,])
+  stopifnot(pathway %in% rownames(z_sgsva))
+  stopifnot(pathway %in% rownames(z_gsva))
+  stopifnot(all(coords$spot %in% colnames(z_sgsva)))
+  stopifnot(all(coords$spot %in% colnames(z_gsva)))
+  
+  layer_levels <- c("Layer1", "Layer2", "Layer3", "Layer4", "Layer5", "Layer6", "WM")
+  
+  coords <- coords %>%
+    dplyr::mutate(
+      score_sgsva = as.numeric(z_sgsva[pathway, spot]),
+      score_gsva  = as.numeric(z_gsva[pathway, spot]),
+      layer = as.character(layer),
+      layer = factor(layer, levels = layer_levels)
+    )
+  
+  # For main figure, I recommend removing NA layer spots
   coords_long <- coords %>%
+    dplyr::filter(!is.na(layer)) %>%
     dplyr::select(layer, score_sgsva, score_gsva) %>%
-    tidyr::pivot_longer(cols = starts_with("score_"),
-                        names_to = "method",
-                        values_to = "score") %>%
-    mutate(method = ifelse(method == "score_sgsva", "sGSVA", "GSVA"),
-           layer = factor(layer, levels = sort(unique(layer))))
+    tidyr::pivot_longer(
+      cols = starts_with("score_"),
+      names_to = "method",
+      values_to = "score"
+    ) %>%
+    dplyr::mutate(
+      method = ifelse(method == "score_sgsva", "sGSVA", "GSVA"),
+      method = factor(method, levels = c("sGSVA", "GSVA"))
+    )
   
   pathway_title <- pretty_kegg_short(pathway)
-  p <- ggplot(coords_long, aes(x = layer, y = score, fill = method)) +
-    geom_violin(width = 0.9, position = position_dodge(width = 0.8)) +
-    geom_boxplot(width = 0.2, position = position_dodge(width = 0.8), outlier.size = 0.3) +
-    scale_fill_manual(values = c("#377eb8", "#e41a1c")) +
+  
+  ggplot(coords_long, aes(x = layer, y = score, fill = method)) +
+    geom_violin(width = 0.9, position = position_dodge(width = 0.8), trim = TRUE) +
+    geom_boxplot(
+      width = 0.2,
+      position = position_dodge(width = 0.8),
+      outlier.size = 0.3
+    ) +
+    scale_fill_manual(values = c("sGSVA" = "#377eb8", "GSVA" = "#e41a1c")) +
     theme_minimal(base_size = 12) +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1),
-          legend.position = "top",
-          panel.grid.major.x = element_blank()) +
-    ggtitle(paste0(pathway_title, " – Layer score distributions")) +
-    ylab("Score") + xlab("Layer")
-  return(p)
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "top",
+      panel.grid.major.x = element_blank(),
+      plot.title = element_text(face = "bold", hjust = 0.5)
+    ) +
+    ggtitle(paste0(pathway_title, " - layer score distributions")) +
+    ylab("z-score") +
+    xlab("Layer")
 }
+
 
 # rank correlation per sample
 get_rank_cor <- function(df_sample, stat = "z_moran") {
@@ -182,11 +238,29 @@ jaccard_matrix <- function(df_sample, topk = 30, stat_col = "z_moran") {
 # -----------------------------
 # generate spatial maps/violin plots
 id <- "151673"
+
+# Use micron coordinates from preprocessing
+coords <- dlpfc_preprocessed[[id]]$coords_um
+coords <- as.data.frame(coords)
+colnames(coords)[1:2] <- c("x", "y")
+
+# Add spot IDs
+coords$spot <- rownames(coords)
+
+# Add layer labels from spatialLIBD object
 idx <- spe$sample_id == id
-coords <- as.data.frame(spatialCoords(spe)[idx, ])
-colnames(coords)[1:2] <- c("x","y")   # usually fullres pixel columns/rows
-coords$spot <- colnames(spe)[idx]
-coords$layer <- spe$layer_guess_reordered[idx]
+layer_df <- data.frame(
+  spot = colnames(spe)[idx],
+  layer = spe$layer_guess_reordered[idx],
+  stringsAsFactors = FALSE
+)
+
+coords <- coords %>%
+  dplyr::left_join(layer_df, by = "spot")
+
+# Safety checks
+stopifnot(all(coords$spot %in% colnames(z_sgsva)))
+stopifnot(all(coords$spot %in% colnames(z_gsva)))
 
 cal_map <- get_spatial_map(z_sgsva, z_gsva, coords, pathway="KEGG_CALCIUM_SIGNALING_PATHWAY")
 cal_violin <- plot_violin(z_sgsva, z_gsva, coords, pathway="KEGG_CALCIUM_SIGNALING_PATHWAY")
@@ -317,20 +391,20 @@ ggsave(
 # -----------------------------
 # DLPFC supplementary figures
 # -----------------------------
-# supplementary figure S1 for 151673
+# supplementary figure S5 for 151673
 oxidat_map <- get_spatial_map(z_sgsva, z_gsva, coords, pathway="KEGG_OXIDATIVE_PHOSPHORYLATION")
 chemo_map <- get_spatial_map(z_sgsva, z_gsva, coords, pathway="KEGG_CHEMOKINE_SIGNALING_PATHWAY")
 oxidat_violin <- plot_violin(z_sgsva, z_gsva, coords, pathway="KEGG_OXIDATIVE_PHOSPHORYLATION")
 chemo_violin <- plot_violin(z_sgsva, z_gsva, coords, pathway="KEGG_CHEMOKINE_SIGNALING_PATHWAY")
-comb_map <- (oxidat_map | oxidat_violin) / (chemo_map | oxidat_violin) +
+comb_map <- (oxidat_map | oxidat_violin) / (chemo_map | chemo_violin) +
   plot_annotation(tag_levels = "A") +
   plot_layout(widths = c(1, 0.9), guides = "collect")
 ggsave(
-  filename = file.path(fig_dir, "supplement_Fig_S8_DLPFC_151673_map_violin.pdf"),
+  filename = file.path(fig_dir, "supplement_Fig_S5_DLPFC_151673_map_violin.pdf"),
   plot = comb_map, width = 20, height = 10
 )
 
-# supplementary figure S2 for all CALCIUM map
+# supplementary figure S6 for all CALCIUM map
 map_list <- list()
 for (i in 1:length(sample_ids)) {
   id <- sample_ids[i]
@@ -363,17 +437,17 @@ all_map <- ((map_list[[1]] + theme(legend.position="none"))|(map_list[[2]] + the
   plot_annotation(tag_levels = "A") +
   plot_layout(widths = c(1, 0.9), guides = "collect")
 ggsave(
-  filename = file.path(fig_dir, "supplement_Fig_S9_DLPFC_CALCIUM_maps.pdf"),
+  filename = file.path(fig_dir, "supplement_Fig_S6_DLPFC_CALCIUM_maps.pdf"),
   plot = all_map, width = 20, height = 15
 )
 
-# supplementary figure S3 for 151673 null histograms
+# supplementary figure S7 for 151673 null histograms
 id <- "151673"
 block_res <- readRDS(file.path(results_dir,paste0(id, "_block_res.rds")))
 top4_moran <- c("KEGG_CALCIUM_SIGNALING_PATHWAY", "KEGG_AXON_GUIDANCE",
                 "KEGG_OXIDATIVE_PHOSPHORYLATION", "KEGG_CHEMOKINE_SIGNALING_PATHWAY")
-hex_results_df <- block_res[[1]]$hex_block_results$hex_block_summary
-hex_perm_null_results <- block_res[[1]]$hex_block_results$hex_perm_null_results
+hex_results_df <- block_res[[1]]$permutation_results$hex_block_results$hex_block_summary
+hex_perm_null_results <- block_res[[1]]$permutation_results$hex_block_results$hex_perm_null_results
 hist_block150 <- list()
 for (nm in top4_moran) {
   df <- data.frame(val = hex_perm_null_results[[nm]]$moran_perm)
@@ -389,8 +463,8 @@ for (nm in top4_moran) {
   hist_block150[[nm]] <- p
 }
 
-hex_results_df <- block_res[[2]]$hex_block_results$hex_block_summary
-hex_perm_null_results <- block_res[[2]]$hex_block_results$hex_perm_null_results
+hex_results_df <- block_res[[2]]$permutation_results$hex_block_results$hex_block_summary
+hex_perm_null_results <- block_res[[2]]$permutation_results$hex_block_results$hex_perm_null_results
 hist_block200 <- list()
 for (nm in top4_moran) {
   df <- data.frame(val = hex_perm_null_results[[nm]]$moran_perm)
@@ -406,8 +480,8 @@ for (nm in top4_moran) {
   hist_block200[[nm]] <- p
 }
 
-hex_results_df <- block_res[[3]]$hex_block_results$hex_block_summary
-hex_perm_null_results <- block_res[[3]]$hex_block_results$hex_perm_null_results
+hex_results_df <- block_res[[3]]$permutation_results$hex_block_results$hex_block_summary
+hex_perm_null_results <- block_res[[3]]$permutation_results$hex_block_results$hex_perm_null_results
 hist_block300 <- list()
 for (nm in top4_moran) {
   df <- data.frame(val = hex_perm_null_results[[nm]]$moran_perm)
@@ -424,8 +498,8 @@ for (nm in top4_moran) {
 }
 
 sgsva_res <- readRDS(file.path(results_dir, paste0(id, "_moranmc_res.rds")))
-mc_results_df <- sgsva_res$moran_geary_results$moran_geary_summary
-mc_perm_null_results <- sgsva_res$moran_geary_results$mc_perm_null_results
+mc_results_df <- sgsva_res$permutation_results$moran_geary_results$moran_geary_summary
+mc_perm_null_results <- sgsva_res$permutation_results$moran_geary_results$mc_perm_null_results
 hist_mc <- list()
 for (nm in top4_moran) {
   df <- data.frame(val = mc_perm_null_results[[nm]]$moran_perm)
@@ -452,7 +526,7 @@ comb_hist <- (hist_block150$KEGG_CALCIUM_SIGNALING_PATHWAY|hist_block150$KEGG_AX
   plot_annotation(tag_levels = "A") +
   plot_layout(widths = c(1, 0.9), guides = "collect")
 ggsave(
-  filename = file.path(fig_dir, "supplement_Fig_S10_DLPFC_151673_null_hist.pdf"),
-  plot = comb_hist, width = 30, height = 30
+  filename = file.path(fig_dir, "supplement_Fig_S7_DLPFC_151673_null_hist.pdf"),
+  plot = comb_hist, width = 25, height = 25
 )
 
