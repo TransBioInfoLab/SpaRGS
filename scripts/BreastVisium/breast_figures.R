@@ -1,423 +1,533 @@
-# making breast Visium figures
+# ============================================================
+# Breast Visium figures
+# ============================================================
+
 suppressPackageStartupMessages({
-  library(Seurat); library(dplyr); library(ggplot2)
-  library(patchwork); library(gridExtra);library(ggspatial)
-  library(ggpubr)
+  library(Seurat)
+  library(SeuratObject)
+  library(dplyr)
+  library(ggplot2)
+  library(patchwork)
+  library(ggspatial)
+  library(scales)
+  library(here)
 })
 
 source("R/sgsva_score.R")
-source("R/spatial_permutation.R")
 
+# ------------------------------------------------------------
+# Paths
+# ------------------------------------------------------------
 
-# Required source files for Breast Visium figure generation
-required_files <- c(
-  "results/breast_visium/bc_obj.rds",
-  "results/breast_visium/block_res.rds",
-  "results/breast_visium/moranmc_res.rds",
-  "results/breast_visium/sgsva_scores.csv",
-  "results/breast_visium/gsva_scores.csv"
-)
-
-missing_files <- required_files[!file.exists(required_files)]
-
-if (length(missing_files) > 0) {
-  stop(
-    "\nMissing Breast Visium source files required for figure generation:\n",
-    paste0("  - ", missing_files, collapse = "\n"),
-    "\n\nThese large intermediate files are not included in the lightweight GitHub repository.\n",
-    "To regenerate them, run:\n\n",
-    "  Rscript scripts/BreastVisium/breast_analysis.R\n",
-    "  Rscript scripts/BreastVisium/breast_celltype_anchoring.R\n",
-    "After these files are generated, rerun:\n\n",
-    "  Rscript scripts/BreastVisium/breast_figures.R\n\n",
-    "Alternatively, use the archived full analysis outputs if provided separately.\n",
-    call. = FALSE
-  )
-}
-
-# ---------------------------
-# paths
-# ---------------------------
 project_dir <- "."
-results_dir <- file.path(project_dir, "results", "breast_visium")
-fig_dir     <- file.path(project_dir, "results", "figures")
-dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
+results_dir   <- file.path(project_dir, "results", "breast_visium")
+anchoring_dir <- file.path(results_dir, "celltype_anchoring")
+pilot_dir     <- file.path(results_dir, "enrichmap_pilot")
+fig_dir       <- file.path(project_dir, "results", "figures")
 
 # ---------------------------
 # load saved outputs
 # ---------------------------
-block_res <- readRDS(file.path(results_dir, "block_res.rds"))
-hex_results_df <- block_res[[2]]$permutation_results$hex_block_results$hex_block_summary
-hex_perm_null_results <- block_res[[2]]$permutation_results$hex_block_results$hex_perm_null_results
-sgsva_res <- readRDS(file.path(results_dir, "moranmc_res.rds"))
-
-anchor_merge_dat <- read.csv(file.path(results_dir, "anchoring_sgsva_scores_merged.csv"))
-
 bc_obj <- readRDS(file.path(results_dir, "bc_obj.rds"))
-sgsva_scores <- read.csv(file.path(results_dir, "sgsva_scores.csv"), row.names = 1, check.names = FALSE)
-z_sgsva <- z_normalization(as.matrix(sgsva_scores))
-gsva_scores <- read.csv(file.path(results_dir, "gsva_scores.csv"), row.names = 1, check.names = FALSE)
-z_gsva <- z_normalization(as.matrix(gsva_scores))
+prespecified_results <- read.csv(file.path(anchoring_dir, "anchoring_prespecified_pairs.csv"))
 
-# Convert pathway scores to a matrix (sGSVA)
-gsva_smooth_matrix <- as.matrix(z_sgsva)
-rownames(gsva_smooth_matrix) <- gsub("_", "-", rownames(gsva_smooth_matrix))
-colnames(gsva_smooth_matrix) <- gsub(".", "-", colnames(gsva_smooth_matrix), fixed = TRUE)
+# main comparator scores
+sgsva_scores <- read.csv(file.path(results_dir, "sgsva_scores.csv"), row.names = 1)
+gsva_scores <- read.csv(file.path(results_dir, "gsva_scores.csv"), row.names = 1)
+gsva_smoothed_scores <- read.csv(file.path(results_dir, "gsva_smoothed_scores.csv"), row.names = 1)
+gsdensity_scores <- read.csv(file.path(results_dir, "gsdensity_scores.csv"), row.names = 1)
 
-# Create a new assay in the Seurat object
-bc_obj[["sGSVA"]] <- CreateAssayObject(data = gsva_smooth_matrix)
-DefaultAssay(bc_obj) <- "sGSVA"
-# Set an empty meta.features dataframe with the same number of rows as pathways
-bc_obj[["sGSVA"]]@meta.features <- data.frame(
-  row.names = rownames(gsva_smooth_matrix)
-)
-
-# Convert pathway scores to a matrix (GSVA)
-gsva_score_matrix <- as.matrix(z_gsva)
-rownames(gsva_score_matrix) <- gsub("_", "-", rownames(gsva_score_matrix))
-colnames(gsva_score_matrix) <- gsub(".", "-", colnames(gsva_score_matrix), fixed = TRUE)
-
-# Create a new assay in the Seurat object
-bc_obj[["GSVA"]] <- CreateAssayObject(data = gsva_score_matrix)
-DefaultAssay(bc_obj) <- "GSVA"
-# Set an empty meta.features dataframe with the same number of rows as pathways
-bc_obj[["GSVA"]]@meta.features <- data.frame(
-  row.names = rownames(gsva_score_matrix)
+# EnrichMap output
+em_default <- read.csv(
+  file.path(pilot_dir, "breast_visium_enrichmap_default_corrected_all_scores.csv"),
+  row.names = 1,
+  check.names = FALSE
+) 
+em_smooth <- read.csv(
+  file.path(pilot_dir, "breast_visium_enrichmap_smooth_only_all_scores.csv"),
+  row.names = 1,
+  check.names = FALSE
 )
 
 
-# ---------------------------
-# helper functions
-# ---------------------------
-pretty_pathway_short <- function(pathway) {
-  dplyr::case_when(
-    grepl("B-CELL-RECEPTOR", pathway) ~ "BCR signaling",
-    grepl("T-CELL-RECEPTOR", pathway) ~ "TCR signaling",
-    grepl("GLUTATHIONE", pathway) ~ "Glutathione metabolism",
-    grepl("FATTY-ACID", pathway) ~ "Fatty acid metabolism",
-    TRUE ~ gsub("-", " ", pathway)
-  )
-}
-# violin plots by annotation
-plot_violin <- function(spatial_obj, pathway, annotation_col = "Classification") {
-  
-  # Fetch pathway scores from both assays
-  DefaultAssay(spatial_obj) <- "sGSVA"
-  sgsva_scores <- FetchData(spatial_obj, vars = pathway, layer = "data")
-  DefaultAssay(spatial_obj) <- "GSVA"
-  gsva_scores  <- FetchData(spatial_obj, vars = pathway, layer = "data")
-  
-  # Add annotation column
-  ann <- spatial_obj@meta.data[[annotation_col]]
-  
-  # Combine into one data frame
-  df <- data.frame(
-    Annotation = ann,
-    sGSVA = as.numeric(sgsva_scores[[1]]),
-    GSVA  = as.numeric(gsva_scores[[1]])
-  ) %>%
-    tidyr::pivot_longer(cols = c("sGSVA", "GSVA"), names_to = "Method", values_to = "Score")
-  
-  # --- biologically defined grouping for main figure ---
-  df <- df %>%
-    mutate(
-      Annotation_group = dplyr::case_when(
-        Annotation == "Lymphocytes" ~ "Lymphocytes",
-        Annotation == "Stroma" ~ "Stroma",
-        Annotation %in% c(
-          "Invasive cancer + stroma + lymphocytes",
-          "Normal glands + lymphocytes",
-          "DCIS",
-          "Cancer trapped in lymphocyte aggregation"
-        ) ~ "Epithelial/tumor",
-        Annotation %in% c("Adipose tissue", "Artefact") ~ "Other",
-        TRUE ~ "Other"
-      )
-    )
-  
-  # order by size
-  df$Annotation_group <- factor(
-    df$Annotation_group,
-    levels = c("Epithelial/tumor", "Stroma", "Lymphocytes", "Other")
-  )
-  # Set consistent y-axis limits
-  lims <- range(df$Score, na.rm = TRUE)
-  
-  # Plot combined violin
-  p <- ggplot(df, aes(x = Annotation_group, y = Score, fill = Method)) +
-    geom_violin(position = position_dodge(width = 0.8), trim = TRUE, scale = "width") +
-    geom_boxplot(width = 0.11, position = position_dodge(width = 0.8), outlier.shape = NA, color = "black", alpha = 0.6) +
-    scale_fill_manual(values = c("GSVA" = "#377eb8", "sGSVA" = "#e41a1c")) +
-    coord_cartesian(ylim = lims) +
-    labs(
-      title = pretty_pathway_short(pathway),
-      x = NULL,
-      y = "Pathway Score"
-    ) +
-    theme_bw(base_size = 8) +
-    theme(
-      plot.title = element_text(hjust = 0.5, face = "bold", size = 9),
-      axis.text.x = element_text(angle = 30, hjust = 1, size = 7),
-      axis.text.y = element_text(size = 7),
-      axis.title.y = element_text(size = 8),
-      legend.position = "top",
-      legend.title = element_blank(),
-      legend.text = element_text(size = 7),
-      panel.grid.major.x = element_blank(),
-      panel.grid.minor = element_blank()
-    )
-  return(p)
+# ------------------------------------------------
+# Name harmonization
+# ------------------------------------------------
+# standardize barcodes
+standardize_barcodes <- function(x) {
+  gsub(".", "-", x, fixed = TRUE)
 }
 
-# generate spatial maps
-get_spatial_map <- function(spatial_obj, method = "sGSVA", pathway, lims) {
-  DefaultAssay(spatial_obj) <- method
-  p <- SpatialFeaturePlot(spatial_obj, features = pathway, pt.size.factor = 3) +
-    ggtitle(paste0(method, ": ", pretty_pathway_short(pathway))) +
-    scale_fill_gradientn(colors = c("#313695", "#ffffbf", "#a50026"),
-                         limits = lims, oob = scales::squish) +
-    annotation_scale(location = "bl", width_hint = 0.35, text_cex = 0.55) +
-    theme(
-      plot.title = element_text(hjust = 0.5, face = "bold", size = 9),
-      legend.title = element_blank(),
-      legend.text = element_text(size = 7),
-      legend.key.height = unit(0.3, "cm"),
-      legend.key.width = unit(0.45, "cm")
-    )
-  return(p)
-}
-get_score_limits <- function(obj, assay, features) {
-  DefaultAssay(obj) <- assay
-  v <- GetAssayData(obj, layer = "data")[features, ]
-  c(min(v, na.rm = TRUE), max(v, na.rm = TRUE))
+# normalize pathway
+normalize_pathway_names <- function(x) {
+  x <- toupper(trimws(as.character(x)))
+  x <- gsub("[^A-Z0-9]+", "_", x)
+  x <- gsub("_+", "_", x)
+  x <- gsub("^_+|_+$", "", x)
+  sub("^KEGG_", "", x)
 }
 
+method_labels <- c(
+  sGSVA = "sGSVA",
+  GSVA = "GSVA",
+  GSVA_smoothed = "GSVA-smoothed",
+  GSDensity = "GSDensity",
+  EnrichMap_default = "EnrichMap-default",
+  EnrichMap_smooth = "EnrichMap-smooth"
+)
 
-# -----------------------------
-# breast Visium main figures
-# -----------------------------
-
-# Example: save a few histograms for Moran's I
-path_short <- function(pathway) {
-  dplyr::case_when(
-    grepl("B_CELL_RECEPTOR", pathway) ~ "BCR signaling",
-    grepl("T_CELL_RECEPTOR", pathway) ~ "TCR signaling",
-    grepl("GLUTATHIONE", pathway) ~ "Glutathione metabolism",
-    grepl("FATTY_ACID", pathway) ~ "Fatty acid metabolism",
-    TRUE ~ gsub("-", " ", pathway)
-  )
-}
-hist_plot <- list()
-path_moran <- c("KEGG_B_CELL_RECEPTOR_SIGNALING_PATHWAY", 
-                "KEGG_GLUTATHIONE_METABOLISM")
-for (nm in path_moran) {
-  df <- data.frame(val = hex_perm_null_results[[nm]]$moran_perm)
-  p <- ggplot(df, aes(x = val)) +
-    geom_histogram(bins = 40, fill = "grey80", color = "grey50") +
-    geom_vline(xintercept = hex_results_df$obs_moran[hex_results_df$pathway==nm], color = "firebrick", linetype = 2, linewidth = 1) +
-    theme_bw() +
-    labs(x = "Moran's I (permuted)", y = "Count",
-         title = path_short(nm))
-  hist_plot[[nm]] <- p
-}
-
-# violin plots
-bcell_violin <- plot_violin(bc_obj, pathway = "KEGG-B-CELL-RECEPTOR-SIGNALING-PATHWAY")
-gluta_violin <- plot_violin(bc_obj, pathway = "KEGG-GLUTATHIONE-METABOLISM")
-
-# KEGG-B-CELL-RECEPTOR-SIGNALING-PATHWAY maps
-lim_sgsva <- get_score_limits(bc_obj, "sGSVA", "KEGG-B-CELL-RECEPTOR-SIGNALING-PATHWAY")
-lim_gsva  <- get_score_limits(bc_obj, "GSVA", "KEGG-B-CELL-RECEPTOR-SIGNALING-PATHWAY")
-lims <- range(lim_sgsva, lim_gsva)
-bcell_sgsva <- get_spatial_map(bc_obj, method = "sGSVA", pathway = "KEGG-B-CELL-RECEPTOR-SIGNALING-PATHWAY", lims)
-bcell_gsva <- get_spatial_map(bc_obj, method = "GSVA", pathway = "KEGG-B-CELL-RECEPTOR-SIGNALING-PATHWAY", lims)
-# KEGG-GLUTATHIONE-METABOLISM maps
-lim_sgsva <- get_score_limits(bc_obj, "sGSVA", "KEGG-GLUTATHIONE-METABOLISM")
-lim_gsva  <- get_score_limits(bc_obj, "GSVA", "KEGG-GLUTATHIONE-METABOLISM")
-lims <- range(lim_sgsva, lim_gsva)
-gluta_sgsva <- get_spatial_map(bc_obj, method = "sGSVA", pathway = "KEGG-GLUTATHIONE-METABOLISM", lims)
-gluta_gsva <- get_spatial_map(bc_obj, method = "GSVA", pathway = "KEGG-GLUTATHIONE-METABOLISM", lims)
-
-# scatterplots of BCR and glutathione
-scatter_BCR <- ggplot(anchor_merge_dat, aes(x = B.cells, y = KEGG_B_CELL_RECEPTOR_SIGNALING_PATHWAY)) +
-  geom_point(alpha = 0.6) +
-  geom_smooth(method = "lm", se = FALSE, color = "blue") +
-  ggpubr::stat_cor(method = "spearman", 
-                   label.x = 0.05, label.y = max(anchor_merge_dat$KEGG_B_CELL_RECEPTOR_SIGNALING_PATHWAY, na.rm=TRUE) + 0.5,
-                   size = 5) +
-  labs(x = "B-cell proportion", y = "sGSVA z-score (BCR Pathway)",
-       title = "BCR Pathway vs B-cell") +
-  theme_minimal()
-scatter_Gluta <- ggplot(anchor_merge_dat, aes(x = Cancer.Epithelial, y = KEGG_GLUTATHIONE_METABOLISM)) +
-  geom_point(alpha = 0.6) +
-  geom_smooth(method = "lm", se = FALSE, color = "blue") +
-  ggpubr::stat_cor(method = "spearman", 
-                   label.x = 0.05, label.y = max(anchor_merge_dat$KEGG_GLUTATHIONE_METABOLISM, na.rm=TRUE) + 0.5,
-                   size = 5) +
-  labs(x = "Cancer Epithelial proportion", y = "sGSVA z-score (Glutathione metabolism)",
-       title = "Glutathione metabolism vs Epithelial") +
-  theme_minimal()
-
-# combine figures
-comb_fig <- (bcell_sgsva | bcell_gsva | bcell_violin) /
-  ((gluta_sgsva+ theme(legend.position="none")) | (gluta_gsva+ theme(legend.position="none")) | gluta_violin) /
-  (hist_plot$KEGG_B_CELL_RECEPTOR_SIGNALING_PATHWAY | hist_plot$KEGG_GLUTATHIONE_METABOLISM |
-     scatter_BCR | scatter_Gluta) +
-  plot_annotation(tag_levels = "A") +
-  plot_layout(widths = c(1, 0.9), guides = "collect")
-ggsave(file.path(fig_dir, "Fig4_BreastVisium_main.pdf"),
-       comb_fig, width = 16, height = 12)
+pathway_labels <- c(
+  B_CELL_RECEPTOR_SIGNALING_PATHWAY = "B-cell receptor signaling",
+  FATTY_ACID_METABOLISM = "Fatty-acid metabolism"
+)
 
 
-# ------------------------------------
-# breast Visium supplementary figures
-# ------------------------------------
-# supplementary figure S1 - Additional pathway spatial maps
-# KEGG-T-CELL-RECEPTOR-SIGNALING-PATHWAY maps
-lim_sgsva <- get_score_limits(bc_obj, "sGSVA", "KEGG-T-CELL-RECEPTOR-SIGNALING-PATHWAY")
-lim_gsva  <- get_score_limits(bc_obj, "GSVA", "KEGG-T-CELL-RECEPTOR-SIGNALING-PATHWAY")
-lims <- range(lim_sgsva, lim_gsva)
-tcell_sgsva <- get_spatial_map(bc_obj, method = "sGSVA", pathway = "KEGG-T-CELL-RECEPTOR-SIGNALING-PATHWAY", lims)
-tcell_gsva <- get_spatial_map(bc_obj, method = "GSVA", pathway = "KEGG-T-CELL-RECEPTOR-SIGNALING-PATHWAY", lims)
-# KEGG-FATTY-ACID-METABOLISM maps
-lim_sgsva <- get_score_limits(bc_obj, "sGSVA", "KEGG-FATTY-ACID-METABOLISM")
-lim_gsva  <- get_score_limits(bc_obj, "GSVA", "KEGG-FATTY-ACID-METABOLISM")
-lims <- range(lim_sgsva, lim_gsva)
-fatty_sgsva <- get_spatial_map(bc_obj, method = "sGSVA", pathway = "KEGG-FATTY-ACID-METABOLISM", lims)
-fatty_gsva <- get_spatial_map(bc_obj, method = "GSVA", pathway = "KEGG-FATTY-ACID-METABOLISM", lims)
+# ------------------------------------------------------------
+# Prepare score matrices
+# ------------------------------------------------------------
 
-# violin plots
-tcell_violin <- plot_violin(bc_obj, pathway = "KEGG-T-CELL-RECEPTOR-SIGNALING-PATHWAY")
-fatty_violin <- plot_violin(bc_obj, pathway = "KEGG-FATTY-ACID-METABOLISM")
+score_list_all <- list(
+  sGSVA = as.matrix(sgsva_scores),
+  GSVA = as.matrix(gsva_scores),
+  GSVA_smoothed = as.matrix(gsva_smoothed_scores),
+  GSDensity = as.matrix(gsdensity_scores),
+  EnrichMap_default = as.matrix(em_default),
+  EnrichMap_smooth = as.matrix(em_smooth)
+)
 
-# moran null hist
-hex_results_df <- block_res[[2]]$permutation_results$hex_block_results$hex_block_summary
-hex_perm_null_results <- block_res[[2]]$permutation_results$hex_block_results$hex_perm_null_results
-hist_plot <- list()
-top4_moran <- c("KEGG_T_CELL_RECEPTOR_SIGNALING_PATHWAY", 
-                "KEGG_FATTY_ACID_METABOLISM")
-for (nm in top4_moran) {
-  df <- data.frame(val = hex_perm_null_results[[nm]]$moran_perm)
-  p <- ggplot(df, aes(x = val)) +
-    geom_histogram(bins = 40, fill = "grey80", color = "grey50") +
-    geom_vline(xintercept = hex_results_df$obs_moran[hex_results_df$pathway==nm], color = "firebrick", linetype = 2, linewidth = 1) +
-    theme_bw() +
-    labs(x = "Moran's I (permuted)", y = "Count",
-         title = path_short(nm))
-  hist_plot[[nm]] <- p
-}
-
-# scatterplots of TCR and Fatty acid
-scatter_TCR <- ggplot(anchor_merge_dat, aes(x = T.cells, y = KEGG_T_CELL_RECEPTOR_SIGNALING_PATHWAY)) +
-  geom_point(alpha = 0.6) +
-  geom_smooth(method = "lm", se = FALSE, color = "blue") +
-  ggpubr::stat_cor(method = "spearman", 
-                   label.x = 0.05, label.y = max(anchor_merge_dat$KEGG_T_CELL_RECEPTOR_SIGNALING_PATHWAY, na.rm=TRUE) + 0.5,
-                   size = 5) +
-  labs(x = "T-cell proportion", y = "sGSVA z-score (TCR Pathway)",
-       title = "TCR Pathway vs T-cell") +
-  theme_minimal()
-scatter_Fatty <- ggplot(anchor_merge_dat, aes(x = Cancer.Epithelial, y = KEGG_FATTY_ACID_METABOLISM)) +
-  geom_point(alpha = 0.6) +
-  geom_smooth(method = "lm", se = FALSE, color = "blue") +
-  ggpubr::stat_cor(method = "spearman", 
-                   label.x = 0.05, label.y = max(anchor_merge_dat$KEGG_FATTY_ACID_METABOLISM, na.rm=TRUE) + 0.5,
-                   size = 5) +
-  labs(x = "Cancer Epithelial proportion", y = "sGSVA z-score (Fatty acid metabolism)",
-       title = "Fatty acid metabolism vs Epithelial") +
-  theme_minimal()
-
-comb_map <- (tcell_sgsva | tcell_gsva | tcell_violin) /
-  ((fatty_sgsva+theme(legend.position="none")) | (fatty_gsva+theme(legend.position="none")) | fatty_violin) /
-  (hist_plot$KEGG_T_CELL_RECEPTOR_SIGNALING_PATHWAY | hist_plot$KEGG_FATTY_ACID_METABOLISM |
-     scatter_TCR | scatter_Fatty) +
-  plot_annotation(tag_levels = "A") +
-  plot_layout(widths = c(1, 0.9), guides = "collect")
-ggsave(file.path(fig_dir, "Supplement_Fig_S6_BreastVisium_additional_pathways_results.pdf"),
-       comb_map, width = 16, height = 12)
-
-# supplementary figure S2 — Full spatial permutation diagnostics
-pathway <- "KEGG_B_CELL_RECEPTOR_SIGNALING_PATHWAY"
-methods <- c("hex-block 150", "hex-block 200", "hex-block 300", "Global permutation")
-plot_null_hist <- function(stat = c("moran", "geary"), method_index, method_label) {
+score_list_all <- lapply(score_list_all, function(mat) {
+  mat <- as.matrix(mat)
   
-  stat <- match.arg(stat)
+  rownames(mat) <- normalize_pathway_names(rownames(mat))
+  colnames(mat) <- standardize_barcodes(colnames(mat))
   
-  if (grepl("hex-block", method_label)) {
-    
-    hex_results_df <- block_res[[method_index]]$permutation_results$hex_block_results$hex_block_summary
-    hex_perm_null_results <- block_res[[method_index]]$permutation_results$hex_block_results$hex_perm_null_results
-    if (stat == "moran") {
-      null_vals <- hex_perm_null_results[[pathway]]$moran_perm
-      obs_val <- hex_results_df$obs_moran[hex_results_df$pathway == pathway]
-      x_lab <- "Moran's I (permuted)"
-    } else {
-      null_vals <- hex_perm_null_results[[pathway]]$geary_perm
-      obs_val <- hex_results_df$obs_geary[hex_results_df$pathway == pathway]
-      x_lab <- "Geary's C (permuted)"
-    }
-    
-  } else {
-    mc_results_df <- sgsva_res$permutation_results$moran_geary_results$moran_geary_summary
-    mc_perm_null_results <- sgsva_res$permutation_results$moran_geary_results$mc_perm_null_results
-    
-    if (stat == "moran") {
-      null_vals <- mc_perm_null_results[[pathway]]$moran_perm
-      obs_val <- mc_results_df$obs_moran[mc_results_df$pathway == pathway]
-      x_lab <- "Moran's I (permuted)"
-    } else {
-      null_vals <- mc_perm_null_results[[pathway]]$geary_perm
-      obs_val <- mc_results_df$obs_geary[mc_results_df$pathway == pathway]
-      x_lab <- "Geary's C (permuted)"
-    }
+  if (anyDuplicated(rownames(mat))) {
+    stop("Duplicated normalized pathway names were detected.")
   }
   
-  df <- data.frame(val = null_vals)
-  ggplot(df, aes(x = val)) +
-    geom_histogram(bins = 40, fill = "grey80", color = "grey50") +
-    geom_vline(xintercept = obs_val, color = "firebrick", linetype = 2, linewidth = 0.8) +
-    theme_bw(base_size = 8) +
-    labs(
-      x = x_lab,
-      y = "Count",
-      title = method_label
+  mat
+})
+
+# Confirm that every method contains all Visium spots
+spot_check <- vapply(
+  score_list_all,
+  function(mat) {
+    all(colnames(bc_obj) %in% colnames(mat))
+  },
+  logical(1)
+)
+
+if (!all(spot_check)) {
+  stop(
+    "Some score matrices are missing Visium spots: ",
+    paste(names(spot_check)[!spot_check], collapse = ", ")
+  )
+}
+
+# Z-standardize without changing score polarity
+z_scores_all <- lapply(score_list_all, z_normalization)
+
+# Add each matrix once as a display assay
+for (method in names(z_scores_all)) {
+  mat <- z_scores_all[[method]]
+  
+  mat <- mat[, colnames(bc_obj), drop = FALSE]
+  rownames(mat) <- gsub("_", "-", rownames(mat))
+  
+  assay_name <- paste0(method, "_display")
+  
+  bc_obj[[assay_name]] <- CreateAssayObject(data = mat)
+}
+
+
+# ------------------------------------------------------------
+# Generate one spatial map
+# ------------------------------------------------------------
+get_spatial_map_main <- function(
+    spatial_obj,
+    assay_name,
+    pathway,
+    limits
+) {
+  DefaultAssay(spatial_obj) <- assay_name
+  
+  method_key <- sub("_display$", "", assay_name)
+  method_title <- unname(method_labels[method_key])
+  
+  SpatialFeaturePlot(
+    spatial_obj,
+    features = pathway,
+    pt.size.factor = 3
+  ) +
+    ggtitle(method_title) +
+    scale_fill_gradientn(
+      colors = c("#313695", "#ffffbf", "#a50026"),
+      limits = limits,
+      oob = scales::squish
     ) +
     theme(
-      plot.title = element_text(hjust = 0.5, face = "bold", size = 9),
-      axis.title = element_text(size = 8),
-      axis.text = element_text(size = 7),
-      panel.grid.minor = element_blank()
+      plot.title = element_text(
+        hjust = 0.5,
+        face = "bold",
+        size = 10
+      ),
+      legend.title = element_blank(),
+      legend.text = element_text(size = 8),
+      legend.key.height = grid::unit(1.4, "cm"),
+      legend.key.width = grid::unit(0.28, "cm"),
+      plot.margin = margin(2, 2, 2, 2)
     )
 }
-moran_list <- list(
-  plot_null_hist("moran", 1, "Hex-block 150 µm"),
-  plot_null_hist("moran", 2, "Hex-block 200 µm"),
-  plot_null_hist("moran", 3, "Hex-block 300 µm"),
-  plot_null_hist("moran", 4, "Global permutation")
+
+# ------------------------------------------------------------
+# Make one horizontal four-method pathway row
+# ------------------------------------------------------------
+make_four_method_row <- function(
+    spatial_obj,
+    assay_names,
+    pathway,
+    pathway_title
+) {
+  values_all <- unlist(
+    lapply(assay_names, function(assay_name) {
+      DefaultAssay(spatial_obj) <- assay_name
+      FetchData(spatial_obj, vars = pathway)[, 1]
+    })
+  )
+  
+  # Same color limits across methods within this pathway
+  limit_max <- unname(
+    quantile(abs(values_all), probs = 0.99, na.rm = TRUE)
+  )
+  
+  shared_limits <- c(-limit_max, limit_max)
+  
+  map_list <- lapply(
+    assay_names,
+    function(assay_name) {
+      get_spatial_map_main(
+        spatial_obj = spatial_obj,
+        assay_name = assay_name,
+        pathway = pathway,
+        limits = shared_limits
+      )
+    }
+  )
+  
+  patchwork::wrap_plots(
+    map_list, nrow = 1, guides = "collect"
+  ) +
+    patchwork::plot_annotation(
+      title = pathway_title,
+      theme = theme(
+        plot.title = element_text(
+          hjust = 0.5,
+          face = "bold",
+          size = 13,
+          margin = margin(b = 4)
+        )
+      )
+    ) &
+    theme(legend.position = "right")
+}
+
+# ------------------------------------------------------
+# breast Visium main figures
+# ------------------------------------------------------
+# representative spatial maps
+main_assays <- c(
+  "sGSVA_display",
+  "GSVA_display",
+  "GSVA_smoothed_display",
+  "GSDensity_display"
 )
 
-geary_list <- list(
-  plot_null_hist("geary", 1, "Hex-block 150 µm"),
-  plot_null_hist("geary", 2, "Hex-block 200 µm"),
-  plot_null_hist("geary", 3, "Hex-block 300 µm"),
-  plot_null_hist("geary", 4, "Global permutation")
+p_bcr_main <- make_four_method_row(
+  spatial_obj = bc_obj,
+  assay_names = main_assays,
+  pathway = "B-CELL-RECEPTOR-SIGNALING-PATHWAY",
+  pathway_title = "B-cell receptor signaling"
+) 
+p_fatty_main <- make_four_method_row(
+  spatial_obj = bc_obj,
+  assay_names = main_assays,
+  pathway = "FATTY-ACID-METABOLISM",
+  pathway_title = "Fatty-acid metabolism"
+) 
+
+# Pathway-cell-type spatial concordance heatmap
+method_order <- c(
+  "sGSVA",
+  "GSVA",
+  "GSVA-smoothed",
+  "GSDensity"
 )
 
-comb_hist <- 
-  (moran_list[[1]] | moran_list[[2]] | moran_list[[3]] | moran_list[[4]]) /
-  (geary_list[[1]] | geary_list[[2]] | geary_list[[3]] | geary_list[[4]]) +
-  plot_annotation(
-    title = "KEGG B cell receptor signaling pathway",
-    subtitle = "Permutation null distributions for Moran's I and Geary's C",
+anchor_label_short <- c(
+  "BCR signaling vs B cells" =
+    "BCR - B cells",
+  "TCR signaling vs T cells" =
+    "TCR - T cells",
+  "Glutathione metabolism vs cancer epithelial" =
+    "Glutathione - cancer epithelial",
+  "Fatty-acid metabolism vs cancer epithelial" =
+    "Fatty acid - cancer epithelial"
+)
+
+anchor_order <- c(
+  "BCR - B cells",
+  "TCR - T cells",
+  "Glutathione - cancer epithelial",
+  "Fatty acid - cancer epithelial"
+)
+
+anchoring_plot_df <- prespecified_results %>%
+  mutate(
+    method = recode(
+      method,
+      "GSVA_smoothed" = "GSVA-smoothed",
+      .default = method
+    ),
+    method = factor(method, levels = method_order),
+    
+    anchor_short = recode(anchor_label, !!!anchor_label_short),
+    anchor_short = factor(anchor_short, levels = rev(anchor_order)),
+    
+    signed_rho = as.numeric(rho),
+    abs_rho = abs(signed_rho),
+    signed_label = sprintf("%+.2f", signed_rho)
+  )
+
+p_anchor <- ggplot(anchoring_plot_df,
+  aes(x = method, y = anchor_short, fill = abs_rho)) +
+  geom_tile(color = "white", linewidth = 0.8,
+    width = 0.98, height = 0.98) +
+  geom_text(aes(label = signed_label), size = 4) +
+  scale_fill_gradient(
+    limits = c(0, 1),
+    low = "white",
+    high = "steelblue",
+    oob = scales::squish,
+    name = expression("|Spearman " * rho * "|")
+  ) +
+  scale_x_discrete(
+    labels = c("sGSVA", "GSVA", "GSVA-smoothed", "GSDensity")
+  ) +
+  labs(
+    x = NULL,
+    y = NULL,
+    title = "Magnitude of pathway-cell-type spatial concordance"
+  ) +
+  guides(
+    fill = guide_colorbar(
+      direction = "horizontal",
+      title.position = "top",
+      title.hjust = 0.5,
+      barwidth = grid::unit(5, "cm"),
+      barheight = grid::unit(0.35, "cm")
+    )
+  ) +
+  theme_bw(base_size = 11) +
+  theme(
+    axis.text.x = element_text(
+      angle = 0,
+      hjust = 0.5,
+      size = 9
+    ),
+    axis.text.y = element_text(size = 9),
+    panel.grid = element_blank(),
+    
+    plot.title = element_text(
+      face = "bold",
+      hjust = 0,
+      size = 13
+    ),
+    plot.subtitle = element_text(
+      hjust = 0.5,
+      size = 9
+    ),
+    
+    legend.position = "bottom",
+    legend.margin = margin(t = -3),
+    plot.margin = margin(4, 4, 4, 4)
+  )
+
+# combine three figures
+heatmap_row <- (
+  patchwork::plot_spacer() |
+    p_anchor |
+    patchwork::plot_spacer()
+) +
+  patchwork::plot_layout(
+    widths = c(0.75, 2.5, 0.75)
+  )
+
+panel_A <- patchwork::wrap_elements(
+  full = patchwork::patchworkGrob(heatmap_row)
+)
+panel_B <- patchwork::wrap_elements(
+  full = patchwork::patchworkGrob(p_bcr_main)
+)
+panel_C <- patchwork::wrap_elements(
+  full = patchwork::patchworkGrob(p_fatty_main)
+)
+
+fig_breast_main <- (panel_A / panel_B / panel_C) +
+  patchwork::plot_layout(
+    heights = c(0.95, 1.15, 1.15)
+  ) +
+  patchwork::plot_annotation(
     tag_levels = "A"
   ) &
   theme(
-    plot.title = element_text(face = "bold", hjust = 0.5, size = 12),
-    plot.subtitle = element_text(hjust = 0.5, size = 10)
-  )   
-ggsave(file.path(fig_dir, "Supplement_Fig_S7_BreastVisium_perm_null_hist.pdf"),
-       comb_hist, width = 12, height = 6, units = "in")
+    plot.background = element_rect(fill = "white", color = NA),
+    plot.tag = element_text(
+      face = "bold",
+      size = 16
+    ),
+    plot.tag.position = c(0.01, 0.98)
+  )
+ggsave(
+  filename = file.path(fig_dir, "Fig4_BreastVisium_main.pdf"),
+  plot = fig_breast_main,
+  width = 10,
+  height = 10
+)
 
+
+
+# --------------------------------------------------------
+# breast Visium supplementart figures
+# --------------------------------------------------------
+# ------------------------------------------------------------
+# Make one multi-method pathway panel
+# ------------------------------------------------------------
+make_pathway_panel <- function(
+    spatial_obj,
+    assay_names,
+    pathway,
+    ncol = 3,
+    pathway_title = NULL,
+    quantile_limit = 0.99
+) {
+  # Check assay availability
+  missing_assays <- setdiff(assay_names, names(spatial_obj@assays))
+  if (length(missing_assays) > 0) {
+    stop(
+      "These assays are missing from the Seurat object: ",
+      paste(missing_assays, collapse = ", ")
+    )
+  }
+  
+  # Check pathway availability in each assay
+  pathway_check <- vapply(
+    assay_names,
+    function(assay_name) {
+      pathway %in% rownames(spatial_obj[[assay_name]])
+    },
+    logical(1)
+  )
+  
+  if (!all(pathway_check)) {
+    stop(
+      "Pathway not found in these assays: ",
+      paste(assay_names[!pathway_check], collapse = ", "),
+      "\nPathway requested: ", pathway
+    )
+  }
+  
+  # Extract all values across selected assays to define common color limits
+  values_all <- unlist(
+    lapply(assay_names, function(assay_name) {
+      DefaultAssay(spatial_obj) <- assay_name
+      FetchData(spatial_obj, vars = pathway)[, 1]
+    })
+  )
+  
+  limit_max <- unname(
+    quantile(abs(values_all), probs = quantile_limit, na.rm = TRUE)
+  )
+  
+  shared_limits <- c(-limit_max, limit_max)
+  
+  # Generate one map per method
+  map_list <- lapply(
+    assay_names,
+    function(assay_name) {
+      get_spatial_map_main(
+        spatial_obj = spatial_obj,
+        assay_name = assay_name,
+        pathway = pathway,
+        limits = shared_limits
+      )
+    }
+  )
+  
+  # Default title
+  if (is.null(pathway_title)) {
+    pathway_title <- pathway
+  }
+  
+  # Combine maps
+  patchwork::wrap_plots(
+    map_list,
+    ncol = ncol,
+    guides = "collect"
+  ) +
+    patchwork::plot_annotation(
+      title = pathway_title,
+      theme = theme(
+        plot.title = element_text(
+          hjust = 0.5,
+          face = "bold",
+          size = 15,
+          margin = margin(b = 6)
+        )
+      )
+    ) &
+    theme(
+      legend.position = "right",
+      plot.background = element_rect(fill = "white", color = NA)
+    )
+}
+supp_assays <- c(
+  "sGSVA_display",
+  "GSVA_display",
+  "GSVA_smoothed_display",
+  "GSDensity_display",
+  "EnrichMap_default_display",
+  "EnrichMap_smooth_display"
+)
+
+p_bcr_supp <- make_pathway_panel(
+  spatial_obj = bc_obj,
+  assay_names = supp_assays,
+  pathway = "B-CELL-RECEPTOR-SIGNALING-PATHWAY",
+  ncol = 3,
+  pathway_title = "B-cell receptor signaling"
+)
+
+p_fatty_supp <- make_pathway_panel(
+  spatial_obj = bc_obj,
+  assay_names = supp_assays,
+  pathway = "FATTY-ACID-METABOLISM",
+  ncol = 3,
+  pathway_title = "Fatty-acid metabolism"
+)
+
+ggsave(
+  file.path(fig_dir, "supplement_Fig_S3_breast_BCR_six_methods.pdf"),
+  p_bcr_supp,
+  width = 11,
+  height = 7.5
+)
+
+ggsave(
+  file.path(fig_dir, "supplement_Fig_S4_breast_fatty_acid_six_methods.pdf"),
+  p_fatty_supp,
+  width = 11,
+  height = 7.5
+)
 
 
 
