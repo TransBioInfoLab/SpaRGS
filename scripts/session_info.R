@@ -72,3 +72,4 @@ write.csv(pkg_versions, package_file, row.names = FALSE)
 
 message("Wrote session information to: ", session_file)
 message("Wrote sGSVA package versions to: ", package_file)
+

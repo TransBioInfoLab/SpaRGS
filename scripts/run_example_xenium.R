@@ -2,11 +2,9 @@
 ## use a small subsets from Xenium FFPE dataset
 
 suppressPackageStartupMessages ({
-  library(Seurat); library(Matrix);library(org.Hs.eg.db)
-  library(gridExtra); library(jsonlite); library(ggplot2)
-  library(viridis); library(spdep); library(msigdbr)
-  library(dplyr); library(purrr) ; library(FNN)
-  library(GSVA); library(hexbin)
+  library(Seurat); library(Matrix); library(jsonlite); library(ggplot2)
+  library(spdep); library(msigdbr); library(dplyr); 
+  library(purrr) ; library(FNN); library(hexbin)
 })
 
 source("R/sgsva_score.R")
@@ -209,18 +207,39 @@ counts_qc <- counts_qc[keep_genes, , drop = FALSE]
 gene_sets_example <- lapply(gene_sets_example, function(gs) intersect(gs, rownames(counts_qc)))
 gene_sets_example <- gene_sets_example[lengths(gene_sets_example) > 0]
 
-# Sample cells for fast example
+# use a contiguous spatial subset
+select_spatial_window_cells <- function(centroids, n = 5000, seed = 1) {
+  set.seed(seed)
+  center_id <- sample(seq_len(nrow(centroids)), 1)
+  center <- as.numeric(centroids[center_id, c("x", "y")])
+  d <- sqrt((centroids$x - center[1])^2 + (centroids$y - center[2])^2)
+  centroids$cell[order(d)][seq_len(min(n, nrow(centroids)))]
+}
+
 n_sample <- min(n_cells_example, ncol(counts_qc))
-sample_cells <- sample(colnames(counts_qc), n_sample)
+sample_cells <- select_spatial_window_cells(
+  centroids_qc,
+  n = n_cells_example
+)
 
 counts_ex <- counts_qc[, sample_cells, drop = FALSE]
 centroids_ex <- centroids_qc[match(sample_cells, centroids_qc$cell), , drop = FALSE]
-
 coords <- data.frame(
   x = centroids_ex$x,
   y = centroids_ex$y,
   row.names = sample_cells
 )
+
+# recompute gene sets after sampling
+gene_n_cells_ex <- Matrix::rowSums(counts_ex > 0)
+counts_ex <- counts_ex[gene_n_cells_ex > 0, , drop = FALSE]
+
+gene_sets_example <- lapply(gene_sets_example, function(gs) intersect(gs, rownames(counts_ex)))
+gene_sets_example <- gene_sets_example[lengths(gene_sets_example) >= 2]
+
+if (length(gene_sets_example) == 0) {
+  stop("No example pathways retained after spatial subsetting. Increase n_cells_example or choose a different tissue window.")
+}
 
 
 # ---------------------------
@@ -245,17 +264,10 @@ sgsva_res <- run_sgsva(
   k = k_knn,
   one_sided = "center_0.5"
 )
-
 z_sgsva <- sgsva_res$z_score
-
-saveRDS(
-  sgsva_res,
-  file.path(out_dir, "minimal_example_xenium_sgsva_result.rds")
-)
-
 write.csv(
   z_sgsva,
-  file.path(out_dir, "minimal_example_xenium_sgsva_z_scores.csv")
+  file.path(out_dir, "minimal_example_xenium_sgsva_zscores.csv")
 )
 
 
@@ -292,8 +304,13 @@ perm_res <- spatial_permutation(z_sgsva = bin_res$bin_scores,
                                 coords = bin_res$bin_coords, 
                                 balanced_sets = sgsva_res$gene_sets,
                                  mode = "knn", k=8, sigma_global = optimal_sigma, 
-                                 one_sided = "center_0.5",
+                                 cor_min = cor_min, one_sided = "center_0.5",
                                  perm_methods = c("moran_mc","geary_mc"))
-print(perm_res$moran_geary_results$moran_geary_summary)
+mc_df <- perm_res$permutation_results$moran_geary_results$moran_geary_summary
+write.csv(mc_df, file.path(out_dir, "minimal_example_xenium_hex_block_results_csv"), row.names = FALSE)
 
-saveRDS(perm_res,file.path(out_dir, "minimal_example_xenium_spatial_permutation_result.rds"))
+mini_res <- list(
+  sgsva_results = sgsva_res, hex_block_permutation = perm_res
+  )
+
+saveRDS(mini_res,file.path(out_dir, "minimal_example_xenium_all_result.rds"))
