@@ -17,7 +17,7 @@ The repository reproduces analyses for:
 - breast cancer Visium
 - human DLPFC Visium
 - Xenium FFPE breast cancer
-- simulation benchmarks
+- simulation benchmarks and robustness
 
 ## Repository structure
 
@@ -54,9 +54,9 @@ Major R package dependencies include:
 
 Additional package-specific system dependencies may be required for some spatial packages, depending on the operating system.
 
-## Session information
+## Session information and random seeds
 
-Session information is saved in `results/session_info.txt`. A curated list of packages used in the sGSVA workflow is saved in `results/package_versions_sgsva.csv`.
+Session information is saved in `results/session_info.txt`. A curated list of packages used in the sGSVA workflow is saved in `results/package_versions_sgsva.csv`. All stochastic analyses used fixed random seeds. Unless otherwise stated, manuscript analyses used seed = 1.
 
 ## Data access
 
@@ -67,8 +67,7 @@ Session information is saved in `results/session_info.txt`. A curated list of pa
 | Breast Visium | Zenodo accession 4739739 | `data/breast_visium/` |
 | DLPFC Visium | `spatialLIBD` package | downloaded programmatically |
 | Xenium FFPE breast cancer | 10x Genomics public Xenium FFPE with 5k Pan-Tissue and Pathways dataset | `data/xenium/` |
-
-Exact dataset accessions and vendor download links are provided in Supplementary Table S11.
+Exact dataset accessions and vendor download links are provided in Supplementary Table S16.
 
 ### Breast Visium
 Breast Visium input files are expected in `data/breast_visium/`.  
@@ -97,7 +96,7 @@ Public raw datasets are expected to be stored locally under the data/ directory 
 
 - Main and supplementary figures: `results/figures/`
 - Machine-readable table sources: `results/tables/`
-- Analysis-specific results: `results/simulation/`, `results/ablation/`, `results/breast_visium/`, `results/DLPFC/`, `results/xenium/`
+- Analysis-specific results: `results/simulation/`, `results/robustness/`, `results/breast_visium/`, `results/DLPFC/`, `results/xenium/`
 - Session information: `results/session_info.txt`
 - Script-to-output manifest: `docs/script_to_output_manifest.xlsx`
 
@@ -109,13 +108,6 @@ To run the full analysis pipeline:
 
 ```bash
 bash run_all.sh
-```
-
-### Regenerate manuscript figures and tables
-
-```bash
-Rscript run_all_figures.R
-Rscript run_all_tables.R
 ```
 
 ### Minimal example

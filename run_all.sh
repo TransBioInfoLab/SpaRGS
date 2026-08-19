@@ -7,13 +7,15 @@ Rscript scripts/run_example_xenium.R
 
 echo "Running simulation analyses..."
 Rscript scripts/Simulation/simulation_analysis.R
+Rscript scripts/Simulation/simulation_GSDesnity.R
 
-echo "Running ablation analyses..."
-Rscript scripts/Ablation/ablation_analysis.R
+echo "Running robustness analyses..."
+Rscript scripts/Robustness/robustness_analysis.R
 
 echo "Running Breast Visium analyses..."
-Rscript scripts/BreastVisium/breast_visium_analysis.R
-Rscript scripts/BreastVisium/breast_celltype_anchoring.R
+Rscript scripts/BreastVisium/breast_visium_with_gsdensity.R
+Rscript scripts/BreastVisium/breast_celltype_anchoring_all_methods.R
+Rscript scripts/BreastVisium/breast_visium_enrichmap.R
 
 echo "Running DLPFC analyses..."
 Rscript scripts/DLPFC/DLPFC_analysis.R
