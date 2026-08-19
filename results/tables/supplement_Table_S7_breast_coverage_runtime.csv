@@ -1,0 +1,7 @@
+"","method","pathways_available","spots_available","shared_pathways_for_exploratory_comparison","common_spots_for_exploratory_comparison","runtime"
+"1","sGSVA",120,4685,120,4685,152.598999999987
+"2","GSVA",186,4685,120,4685,22.4429999999993
+"3","GSVA-smoothed",186,4685,120,4685,26.1150000000052
+"4","GSDensity",185,4685,120,4685,10.8189999999886
+"5","EnrichMap-default",185,4685,120,4685,2.552983045578
+"6","EnrichMap-smooth",185,4685,120,4685,2.59488010406494

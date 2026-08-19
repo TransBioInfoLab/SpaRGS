@@ -1,0 +1,4 @@
+sigma_f,n_queried,n_retained,n_nonretained,retention_rate
+0.5,360,45,315,0.125
+1,360,340,20,0.9444444444444444
+1.5,360,360,0,1
