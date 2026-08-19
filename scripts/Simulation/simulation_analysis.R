@@ -72,17 +72,14 @@ for (r in 1:replicates) {
   sim_res[[paste0("replicate",r)]] <- rep
 }
 saveRDS(sim_res, file.path(results_dir, "rep_simulation.rds"))
-rep1 <- sim_res[[paste0("replicate",1)]] # use replicate1 as representation
-saveRDS(rep1, file.path(results_dir, "simulation_replicate1.rds"))
 
 
 
 # ---------------------------
 # benchmarking
 # ---------------------------
-# AUROC/Delong test results across replicates
+# AUROC results across replicates
 res_auc <- NULL
-res_delong <- NULL
 for (r in 1:replicates) {
   sim_rep <- sim_res[[paste0("replicate",r)]]
   for (g in seq_len(length(sim_rep))) {
@@ -92,11 +89,11 @@ for (r in 1:replicates) {
     
     # compute sGSVA scores
     t0 <- proc.time()[3]
-    sgsva_res <- run_sgsva(sim$counts, sim$coords, sim$per_path, 
+    sgsva_res <- run_sgsva(sim$counts, sim$coords, gene_sets[sel_paths], 
                            sigma_global = floor(scn$ell/sqrt(2)), 
-                           directionality = "oracle", one_sided = "center_0.5")
-    sgsva_scores <- sgsva_res$z_score
+                           directionality = "data-driven", one_sided = "center_0.5")
     rt <- proc.time()[3] - t0
+    sgsva_scores <- sgsva_res$z_score
     temp <- eval_metrics(score = sgsva_scores, method = "sGSVA", scn, sim, rt)
     res_auc <- rbind(res_auc, temp)
     
@@ -114,51 +111,44 @@ for (r in 1:replicates) {
     colnames(smoothed) <- colnames(expr)
     #GSVA
     t0 <- proc.time()[3]
-    gsva_scores <- run_gsva(expr, sim$per_path)
+    gsva_scores <- run_gsva(expr, gene_sets[sel_paths])
     rt <- proc.time()[3] - t0
     temp <- eval_metrics(score = gsva_scores, method = "GSVA", scn, sim, rt)
     res_auc <- rbind(res_auc, temp)
     #GSVA on smoothed
     t0 <- proc.time()[3]
-    gsva_smoothed <- run_gsva(smoothed, sim$per_path)
+    gsva_smoothed <- run_gsva(smoothed, gene_sets[sel_paths])
     rt <- proc.time()[3] - t0
-    temp <- eval_metrics(score = gsva_smoothed, method = "GSVA_on_smoothed_expression", scn, sim, rt)
+    temp <- eval_metrics(score = gsva_smoothed, method = "GSVA_smoothed", scn, sim, rt)
     res_auc <- rbind(res_auc, temp)
     #AUCell
     t0 <- proc.time()[3]
-    aucell_scores <- run_aucell(expr, sim$per_path)
+    aucell_scores <- run_aucell(expr, gene_sets[sel_paths])
     rt <- proc.time()[3] - t0
     temp <- eval_metrics(score = aucell_scores, method = "AUCell", scn, sim, rt)
     res_auc <- rbind(res_auc, temp)
     #UCell
     t0 <- proc.time()[3]
-    ucell_scores <- run_ucell(expr, sim$per_path)
+    ucell_scores <- run_ucell(expr, gene_sets[sel_paths])
     rt <- proc.time()[3] - t0
+    rownames(ucell_scores) <- sel_paths
     temp <- eval_metrics(score = ucell_scores, method = "UCell", scn, sim, rt)
     res_auc <- rbind(res_auc, temp)
     #ssGSEA
     t0 <- proc.time()[3]
-    ssgsea_scores <- run_ssgsea(expr, sim$per_path)
+    ssgsea_scores <- run_ssgsea(expr, gene_sets[sel_paths])
     rt <- proc.time()[3] - t0
     temp <- eval_metrics(score = ssgsea_scores, method = "ssGSEA", scn, sim, rt)
     res_auc <- rbind(res_auc, temp)
     #AddModuleScore
     t0 <- proc.time()[3]
-    addmod_scores <- run_addmod(sim$counts, sim$per_path) # input counts
+    addmod_scores <- run_addmod(sim$counts, gene_sets[sel_paths]) # input counts
     rt <- proc.time()[3] - t0
     temp <- eval_metrics(score = addmod_scores, method = "AddModuleScore", scn, sim, rt)
     res_auc <- rbind(res_auc, temp)
-    
-    # perform Delong tests per pathway
-    scores <- list(sGSVA=sgsva_scores, GSVA=gsva_scores, GSVA_on_smoothed_expression=gsva_smoothed,
-                   AUCell=aucell_scores, UCell=ucell_scores, ssGSEA=ssgsea_scores, AddModuleScore=addmod_scores)
-    temp_de <- bind_rows(lapply(method_pairs, function(methods) {
-      delong_per_pathway(sim$fields, scores, methods, q = 0.10, scn)
-    }))
-    res_delong <- rbind(res_delong, temp_de)
+    res_auc$replicate <- r
   }
-  #write.csv(res_auc, file.path(results_dir, paste0("replicate",r,"_auroc.csv")))
-  #write.csv(res_delong, file.path(results_dir, paste0("replicate",r,"_delong_test.csv")))
+  #write.csv(res_auc, file.path(base_dir, paste0("replicate",r,"_auroc.csv")))
 }
 
 
@@ -173,9 +163,9 @@ for (r in 1:replicates) {
     sel_paths <- names(sim$per_path)
     
     # get sgsva scores
-    sgsva_res <- run_sgsva(sim$counts, sim$coords, sim$per_path, 
+    sgsva_res <- run_sgsva(sim$counts, sim$coords, gene_sets[sel_paths], 
                            sigma_global = floor(scn$ell/sqrt(2)), 
-                           directionality = "oracle", one_sided = "center_0.5")
+                           directionality = "data-driven", one_sided = "center_0.5")
     sgsva_scores <- sgsva_res$z_score
     hid <- make_hex_ids(coords, cellsize = scn$ell)
     df <- vector("list", length(sel_paths))
@@ -189,19 +179,13 @@ for (r in 1:replicates) {
       out_moran_mc <- perm_with_early_stop(stat_moran, x, listw)
       out_geary_mc <- perm_with_early_stop(stat_geary, x, listw)
       
-      # get hex-block results
-      out_moran_hex <- perm_with_early_stop(stat_moran_hex, x, listw, hid)
-      out_geary_hex <- perm_with_early_stop(stat_geary_hex, x, listw, hid)
-      
       # convert results into data.frame
       df[[p]] <- data.frame(
         pathway = pathway,
         obs_moran = out_moran_mc$obs, z_moran = out_moran_mc$z, 
-        p_moran = out_moran_mc$p, z_moran_hex = out_moran_hex$z, 
-        p_moran_hex = out_moran_hex$p, 
+        p_moran = out_moran_mc$p, 
         obs_geary = -out_geary_mc$obs, z_geary = -out_geary_mc$z, 
-        p_geary = out_geary_mc$p, z_geary_hex = -out_geary_hex$z,
-        p_geary_hex = out_geary_hex$p,
+        p_geary = out_geary_mc$p, 
         block_size = scn$ell, ell = scn$ell, sigma_f = scn$sigma_f,
         up_size = scn$up_size, down_size = scn$down_size,
         sigma_global = floor(scn$ell/sqrt(2)),
@@ -211,93 +195,51 @@ for (r in 1:replicates) {
     temp_spatial <- do.call(rbind, df)
     rownames(temp_spatial) <- NULL
     temp_spatial$p_moran <- ifelse(temp_spatial$p_moran < 0.001, "< 0.001", temp_spatial$p_moran)
-    temp_spatial$p_moran_hex <- ifelse(temp_spatial$p_moran_hex < 0.001, "< 0.001", temp_spatial$p_moran_hex)
     temp_spatial$p_geary <- ifelse(temp_spatial$p_geary < 0.001, "< 0.001", temp_spatial$p_geary)
-    temp_spatial$p_geary_hex <- ifelse(temp_spatial$p_geary_hex < 0.001, "< 0.001", temp_spatial$p_geary_hex)
     res_spatial <- rbind(res_spatial, temp_spatial)
   }
   #write.csv(res_spatial, file.path(results_dir, paste0("replicate",r,"_moran_geary.csv")))
 }
 
+
+
+# --- organize summary results ---
 # get metrics result
 region_raw <- res_auc
-region_raw <- region_raw %>%
-  dplyr::mutate(methods=ifelse(methods=="GSVA_on_smoothed_expression", 
-                               "GSVA_smoothed", methods))
-write.csv(region_raw, file.path(results_dir, "AUROC_spearman_runtime_all_replicates_oracle.csv"))
+write.csv(region_raw, file.path(results_dir, "evaluate_metrics_all_replicates_data_driven.csv"))
 
-# AUROC summary results
-region_sum <- region_raw %>%
-  group_by(pathway, methods, ell, sigma_f, up_size, down_size) %>%
-  summarise(
-    n = n(),
-    mean_auroc = mean(AUROC, na.rm=TRUE),
-    se_auroc = sd(AUROC, na.rm=TRUE)/sqrt(n)
-  )
-write.csv(region_sum, file.path(results_dir, "auroc_aggregate_sum_oracle.csv"))
+# signed vs absolute spearman orientation diagnostic
+# Identify pathway-replicate-scenario pairs retained by data-driven sGSVA
+retained_keys <- region_raw %>%
+  filter(methods == "sGSVA", retained == TRUE, !is.na(AUROC)) %>%
+  distinct(pathway, replicate, ell, sigma_f, up_size, down_size)
 
-# spearman correlation result
-cor_sum <- region_raw %>%
-  group_by(pathway, methods, ell, sigma_f, up_size, down_size) %>%
-  summarise(
-    n = n(),
-    mean_cor = mean(spearman, na.rm=TRUE),
-    se_cor = sd(spearman, na.rm=TRUE)/sqrt(n)
-  )
-write.csv(cor_sum, file.path(results_dir, "spearman_aggregate_sum_oracle.csv"))
-
-# get running time
-time_sum <- region_raw %>%
-  mutate(
-    set_type = case_when(
-      up_size==25 & down_size==25 ~ "Balanced (25/25)",
-      up_size==25 & down_size==0 ~ "One-sided (25/0)"
-    )
-  ) %>%
-  group_by(methods, ell, sigma_f, set_type) %>%
-  summarise(
-    n = n(),
-    mean_times = mean(times, na.rm=TRUE),
-    se_times = sd(times, na.rm=TRUE)/sqrt(n)
+# Retained-matched dataset: all methods evaluated on sGSVA-retained pathway-replicate pairs
+region_retained_matched <- region_raw %>%
+  semi_join(
+    retained_keys,
+    by = c("pathway", "replicate", "ell", "sigma_f", "up_size", "down_size")
   ) %>%
   mutate(
-    ci_low  = mean_times - 1.96 * se_times,
-    ci_high = mean_times + 1.96 * se_times
+    set_type = ifelse(down_size == 0, "One-sided (25/0)", "Balanced (25/25)")
   )
-write.csv(time_sum, file.path(results_dir, "time_aggregate_sum_oracle.csv"))
 
-
-# get delong test results
-delong_raw <- res_delong
-delong_raw <- delong_raw %>%
-  mutate(method2 = ifelse(method2=="GSVA_on_smoothed_expression",
-                          "GSVA_smoothed", method2))
-write.csv(delong_raw, file.path(results_dir, "Delongtest_all_replicates_oracle.csv"))
-
-# summary results across replicates
-delong_sum <- delong_raw %>%
-  mutate(
-    set_type = case_when(
-      up_size == 25 & down_size == 25 ~ "Balanced (25/25)",
-      up_size == 25 & down_size == 0  ~ "One-sided (25/0)"
-    )
-  ) %>%
-  group_by(pathway, method1, method2, set_type, ell, sigma_f) %>%
+orientation_diag <- region_retained_matched %>%
+  group_by(methods, set_type, ell, sigma_f) %>%
   summarise(
-    n_rep      = n(),
-    auc1_mean  = mean(auc1, na.rm = TRUE),
-    auc2_mean  = mean(auc2, na.rm = TRUE),
-    auc_diff_mean = mean(auc_diff, na.rm = TRUE),
-    auc_diff_se   = sd(auc_diff, na.rm = TRUE) / sqrt(n_rep),
-    p_value     = stouffer_two_sided(p_delong, auc_diff),
-    .groups    = "drop"
+    n_evaluable = sum(!is.na(spearman_signed)),
+    mean_signed_spearman = mean(spearman_signed, na.rm = TRUE),
+    mean_abs_spearman = mean(spearman, na.rm = TRUE),
+    negative_spearman_rate = mean(spearman_signed < 0, na.rm = TRUE),
+    .groups = "drop"
   )
-write.csv(delong_sum, file.path(results_dir, "delongtest_aggregate_sum_oracle.csv"))
+write.csv(orientation_diag, 
+          file.path(results_dir, "simulation_signed_spearman_orientation_diagnostic.csv"))
 
 
-# get Moran's I
+# get Moran's I/Geary's C
 moran_raw <- res_spatial
-write.csv(moran_raw, file.path(results_dir, "Moran_geary_all_replicates_oracle.csv"))
+write.csv(moran_raw, file.path(results_dir, "spatial_test_all_replicates_data_driven.csv"))
 
 moran_sum <- moran_raw %>%
   mutate(
@@ -306,13 +248,12 @@ moran_sum <- moran_raw %>%
       up_size==25 & down_size==0 ~ "One-sided (25/0)"
     )
   ) %>%
-  group_by(pathway, block_size, ell, sigma_f, set_type, sigma_global) %>%
+  group_by(pathway, ell, sigma_f, set_type, sigma_global) %>%
   summarise(
+    n_retained = sum(retained),
     obs_moran = mean(obs_moran, na.rm=TRUE),
     z_moran = mean(z_moran, na.rm=TRUE),
-    z_moran_hex = mean(z_moran_hex, na.rm=TRUE),
     obs_geary = mean(obs_geary, na.rm=TRUE),
-    z_geary = mean(z_geary, na.rm=TRUE),
-    z_geary_hex = mean(z_geary_hex, na.rm=TRUE),
+    z_geary = mean(z_geary, na.rm=TRUE)
   )
-write.csv(moran_sum, file.path(results_dir, "moran_geary_aggregate_sum_oracle.csv"))
+write.csv(moran_sum, file.path(results_dir, "spatial_test_aggregate_sum_data_driven.csv"))
