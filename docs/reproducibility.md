@@ -22,7 +22,10 @@ Fixed seeds are used for stochastic steps:
 |---|---:|
 | Minimal example sampling | 1 |
 | Simulation benchmark | 1 |
-| Ablation simulations | 1 |
+| Robustness simulations | 1 |
+| Breast Visium analysis | 1 |
+| DLPFC analysis | 1 |
+| Xenium analysis | 1 |
 | Spatial permutations | 124 |
 
 ## Dataset paths
@@ -32,11 +35,11 @@ Fixed seeds are used for stochastic steps:
 | Breast Visium | Zenodo accession 4739739 | `data/breast_visium/` |
 | DLPFC Visium | `spatialLIBD` package | downloaded programmatically |
 | Xenium FFPE breast cancer | 10x Genomics public Xenium 5k Pan-Tissue and Pathways dataset | `data/xenium/` |
-Exact dataset accessions and vendor download links are provided in Supplementary Table S11.
+Exact dataset accessions and vendor download links are provided in Supplementary Table S16.
 
 ## Reproducibility limitations
 
-Large raw datasets are not redistributed. Users must download the public datasets and place them in the expected folders. Some long-running permutation analyses may require multiple days or weeks depending on hardware and permutation settings.
+Large raw datasets are not redistributed. Users must download the public datasets and place them in the expected folders. Some long-running permutation analyses may require multiple days depending on hardware and permutation settings.
 
 ## Session information
 
