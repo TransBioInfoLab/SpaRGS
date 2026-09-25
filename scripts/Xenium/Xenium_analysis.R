@@ -8,13 +8,10 @@ suppressPackageStartupMessages ({
   library(tidyr); library(stringr)
 })
 
-source("R/sgsva_score.R")
-source("R/spatial_permutation.R")
-
 set.seed(1)
 
 # ---------------------------
-# paths
+# paths and reproducibility
 # ---------------------------
 project_dir <- "."
 data_dir <- file.path(project_dir, "data", "xenium")
@@ -22,8 +19,9 @@ results_dir <- file.path(project_dir, "results", "xenium")
 fig_dir <- file.path(project_dir, "results", "figures")
 table_dir <- file.path(project_dir, "results", "tables")
 supp_dir <- file.path(project_dir, "results", "supplementary_data")
-dir.create(results_dir, recursive = TRUE, showWarnings = FALSE)
-dir.create(supp_dir, recursive = TRUE, showWarnings = FALSE)
+
+source(file.path(project_dir, "R/sgsva_score.R"))
+source(file.path(project_dir, "R/spatial_permutation.R"))
 
 
 # ---------------------------
@@ -261,6 +259,11 @@ ggsave(filename=file.path(fig_dir, "supplement_Fig_S11_Xenium_preprocessing.pdf"
 # ---------------------------------
 # computing three pathway scores
 # ---------------------------------
+# generate runtime table
+runtime_results <- tibble::tibble(
+  method = character(),
+  runtime = numeric()
+)
 
 # sGSVA
 optimal_sigma <- estimate_sigma_knn(coords, k=8) # 24
@@ -273,7 +276,9 @@ sgsva_res <- run_sgsva(expr, coords, kegg_sets_final,
                        sigma_global = 24, cor_min = 0.1, 
                        mode = "knn", k=8, one_sided = "center_0.5")
 rt <- proc.time()[3] - t0
-# runtime: 5674.033
+runtime_results <- bind_rows(runtime_results,
+                             tibble(method = "sGSVA", runtime = rt))
+
 saveRDS(sgsva_res, file.path(results_dir, "sgsva_score_res.rds"))
 
 sgsva_res <- readRDS(file.path(results_dir, "sgsva_score_res.rds"))
@@ -289,10 +294,16 @@ lcp <- log1p(t(t(counts_qc)/lib*1e6)) #logCPM
 expr <- as.matrix(lcp)
 keep <- rowSums(expr > 0) >= floor(0 * ncol(expr))
 expr <- expr[keep, , drop = FALSE]
+
+t0 <- proc.time()[3]
 params <- gsvaParam(
   expr, kegg_sets_final
 )
 gsva_scores <- gsva(params, verbose = FALSE)
+rt <- proc.time()[3] - t0
+runtime_results <- bind_rows(runtime_results,
+                             tibble(method = "GSVA", runtime = rt))
+
 write.csv(gsva_scores, file.path(results_dir, "gsva_score.csv"))
 
 gsva_scores <- read.csv(file.path(results_dir, "gsva_score.csv"))
@@ -302,6 +313,7 @@ z_gsva <- z_normalization(as.matrix(gsva_scores))
 colnames(z_gsva) <- gsub("\\.","-",colnames(z_gsva))
 
 # GSVA on smoothed
+t0 <- proc.time()[3]
 smoothed <- smooth_expr(expr, coords, sigma=24, mode="knn", k=8)
 smoothed <- as.matrix(smoothed)
 colnames(smoothed) <- colnames(expr)
@@ -309,6 +321,10 @@ params <- gsvaParam(
   smoothed, kegg_sets_final
 )
 gsva_smooth <- gsva(params, verbose = FALSE)
+rt <- proc.time()[3] - t0
+runtime_results <- bind_rows(runtime_results,
+                             tibble(method = "GSVA-smoothed", runtime = rt))
+write.csv(runtime_results, file.path(results_dir, "Xenium_runtime_summary.csv"))
 write.csv(gsva_smooth, file.path(results_dir, "gsva_smooth_score.csv"))
 
 gsva_smooth <- read.csv(file.path(results_dir, "gsva_smooth_score.csv"))
@@ -317,6 +333,10 @@ gsva_smooth$X <- NULL
 z_gsva_smooth <- z_normalization(as.matrix(gsva_smooth))
 colnames(z_gsva_smooth) <- gsub("\\.","-",colnames(z_gsva_smooth))
 
+
+# ---------------------------------
+# summary Xenium coverage
+# ---------------------------------
 # Collect score matrices
 score_list <- list(
   sGSVA = as.matrix(sgsva_res$scores),
@@ -610,57 +630,97 @@ write.csv(
 # ---------------------------------------------------------------
 # Recompute marker-module scores after removing overlapping genes
 # ---------------------------------------------------------------
+
 min_nonoverlap_genes <- 2
 
-nonoverlap_sets <- list()
-nonoverlap_pair_info <- list()
-
-for (i in seq_len(nrow(xenium_pairs))) {
-  pw <- xenium_pairs$pathway[i]
-  mod <- xenium_pairs$module[i]
+# Fixed-control implementation
+make_nonoverlap_score_fixed_control <- function(
+    xen,
+    original_col,
+    module_genes,
+    nonoverlap_genes,
+    expr_module,
+    cells
+) {
   
-  pathway_genes <- intersect(kegg_sets_final[[pw]], rownames(counts_qc))
-  module_genes  <- intersect(marker_sets[[mod]], rownames(counts_qc))
-  nonoverlap_genes <- setdiff(module_genes, pathway_genes)
+  module_genes <- intersect(module_genes, rownames(expr_module))
+  nonoverlap_genes <- intersect(nonoverlap_genes, rownames(expr_module))
   
-  if (length(nonoverlap_genes) >= min_nonoverlap_genes) {
-    pair_id <- paste0("pair", i)
-    nonoverlap_sets[[pair_id]] <- nonoverlap_genes
-    
-    nonoverlap_pair_info[[pair_id]] <- data.frame(
-      pair_id = pair_id,
-      anchor_label = xenium_pairs$anchor_label[i],
-      pathway = pw,
-      module = mod,
-      stringsAsFactors = FALSE
-    )
-  }
+  if (length(module_genes) == 0)
+    stop("No original module genes found.")
+  
+  if (length(nonoverlap_genes) == 0)
+    stop("No non-overlap module genes remain.")
+  
+  # Original feature-gene mean
+  original_feature_mean <- Matrix::colMeans(
+    expr_module[module_genes, cells, drop = FALSE])
+  
+  # Original AddModuleScore
+  original_score <- as.numeric(xen@meta.data[cells, original_col])
+  names(original_score) <- cells
+  
+  # Recover the exact original control contribution
+  original_control_mean <- original_feature_mean - original_score
+  
+  # Feature mean after removing overlap
+  nonoverlap_feature_mean <- Matrix::colMeans(
+    expr_module[nonoverlap_genes, cells, drop = FALSE])
+  
+  # Keep control contribution FIXED
+  nonoverlap_score <- nonoverlap_feature_mean - original_control_mean
+  
+  list(
+    original_score = original_score,
+    nonoverlap_score = nonoverlap_score,
+    original_feature_mean = original_feature_mean,
+    nonoverlap_feature_mean = nonoverlap_feature_mean,
+    original_control_mean = original_control_mean
+  )
 }
 
-nonoverlap_pair_info <- dplyr::bind_rows(nonoverlap_pair_info)
+expr_module <- GetAssayData(xen, assay = "Xenium", layer = "data")
 
-# Add non-overlap module scores to the existing Seurat object
-# This uses the same normalized Xenium object and AddModuleScore settings.
-xen <- AddModuleScore(
-  object   = xen,
-  features = nonoverlap_sets,
-  name     = "NO_",
-  ctrl     = 25,
-  nbin     = 24
-)
+fixed_scores <- list()
+for (i in seq_len(nrow(xenium_pairs))) {
+  
+  pw  <- xenium_pairs$pathway[i]
+  mod <- xenium_pairs$module[i]
+  
+  pathway_genes <- intersect(kegg_sets_final[[pw]], rownames(expr_module))
+  module_genes <- intersect(marker_sets[[mod]], rownames(expr_module))
+  nonoverlap_genes <- setdiff(module_genes, pathway_genes)
+  
+  if (length(nonoverlap_genes) < min_nonoverlap_genes)
+    next
+  
+  original_col <- paste0("GG_", mod)
+  
+  res <- make_nonoverlap_score_fixed_control(
+    xen = xen,
+    original_col = original_col,
+    module_genes = module_genes,
+    nonoverlap_genes = nonoverlap_genes,
+    expr_module = expr_module,
+    cells = common_cells
+  )
+  
+  new_col <- paste0("NO_FIXED_", i)
+  
+  meta[[new_col]] <- res$nonoverlap_score
+  
+  fixed_scores[[paste0("pair", i)]] <- list(
+    score_col = new_col,
+    original_genes = module_genes,
+    nonoverlap_genes = nonoverlap_genes,
+    overlap_genes = intersect(module_genes, pathway_genes)
+  )
+}
 
-# AddModuleScore creates columns NO_1, NO_2, ...
-no_cols <- paste0("NO_", seq_along(nonoverlap_sets))
-names(no_cols) <- names(nonoverlap_sets)
 
-# Add these non-overlap scores to meta for common cells
-meta <- xen@meta.data[common_cells, , drop = FALSE]
-meta$bin_id <- coords_sub$bin_id
-
-
-# ---------------------------
+# ---------------------------------------------------------
 # Helper function for one pathway and one module-score column
-# ---------------------------
+# ---------------------------------------------------------
 get_pair_bin_cor <- function(pathway, module_col) {
   
   df <- data.frame(
@@ -726,27 +786,18 @@ for (i in seq_len(nrow(xenium_pairs))) {
   
   sens_list[[length(sens_list) + 1]] <- original_stats
   
-  # Non-overlap module correlation, if evaluable
+  # Non-overlap module correlation
   pair_id <- paste0("pair", i)
   
-  if (pair_id %in% names(no_cols)) {
-    no_col <- no_cols[[pair_id]]
-    
-    nonoverlap_stats <- get_pair_bin_cor(
-      pathway = pw,
-      module_col = no_col
-    )
-    nonoverlap_stats$anchor_label <- anchor_label
-    nonoverlap_stats$pathway <- pw
-    nonoverlap_stats$module <- mod
-    nonoverlap_stats$module_version <- "Non-overlap module"
-    
-  } else {
-    nonoverlap_stats <- original_stats
-    nonoverlap_stats$rho <- NA_real_
-    nonoverlap_stats$abs_rho <- NA_real_
-    nonoverlap_stats$module_version <- "Non-overlap module"
-  }
+  no_col <- fixed_scores[[pair_id]]$score_col
+  nonoverlap_stats <- get_pair_bin_cor(
+    pathway = pw,
+    module_col = no_col
+  )
+  nonoverlap_stats$anchor_label <- anchor_label
+  nonoverlap_stats$pathway <- pw
+  nonoverlap_stats$module <- mod
+  nonoverlap_stats$module_version <- "Non-overlap module"
   
   sens_list[[length(sens_list) + 1]] <- nonoverlap_stats
 }
@@ -769,7 +820,6 @@ write.csv(
   file.path(results_dir, "xenium_representative_nonoverlap_sensitivity_long.csv"),
   row.names = FALSE
 )
-
 
 
 # ---------------------------
@@ -803,19 +853,29 @@ bin_df_sub <- bin_df[match(bin_ids, bin_df$bin_id), ]
 coords_bin <- as.matrix(bin_df_sub[, c("bx", "by")])
 rownames(coords_bin) <- paste0("bin_", bin_ids)
 
-# run moran.mc/geary.mc
+# global permutation
 t0 <- proc.time()[3]
 sgsva_res <- spatial_permutation(bin_scores_sgsva, coords_bin, balanced_sets,
                                  mode = "knn", k=8, sigma_global = 24, 
                                  one_sided = "center_0.5",
                                  perm_methods = c("moran_mc","geary_mc"))
 rt <- proc.time()[3]-t0
-# rt = 242,914 seconds (67.5 hours)
-
+print(rt) # rt = 242,914 seconds (67.5 hours)
 mc_df <- sgsva_res$moran_geary_results$moran_geary_summary
 out_csv <- file.path(results_dir, "moran_geary_pathway_summary.csv")
 readr::write_csv(mc_df, out_csv)
 
+# export output
+mc_export <- mc_df %>%
+  dplyr::mutate(
+    permutation_scheme = "global",
+    one_sided = "center_0.5",
+    seed_permutation = 124
+  ) %>%
+  dplyr::select(-obs_geary_flipped, -z_geary_flipped, 
+                -null_mean_geary_flipped, -null_sd_geary_flipped)
+
+# hex-block permutation
 block_sizes <- c(150, 200, 300)
 block_res <- lapply(block_sizes, function(b) {
   spatial_permutation(bin_scores_sgsva, coords_bin, balanced_sets,
@@ -830,6 +890,36 @@ readr::write_csv(hex200_df, file.path(results_dir, "block200_pathway_summary.csv
 
 hex300_df <- block_res[[3]]$hex_block_results$hex_block_summary
 readr::write_csv(hex300_df, file.path(results_dir, "block300_pathway_summary.csv"))
+
+# export output
+hex150_export <- hex150_df %>%
+  dplyr::mutate(
+    permutation_scheme = "hex-block",
+    block_size_um = block_size,
+    one_sided = "center_0.5",
+    seed_permutation = 124
+  ) %>%
+  dplyr::select(-obs_geary_flipped, -z_geary_flipped, 
+                -null_mean_geary_flipped, -null_sd_geary_flipped, -block_size)
+hex200_export <- hex200_df %>%
+  dplyr::mutate(
+    permutation_scheme = "hex-block",
+    block_size_um = block_size,
+    one_sided = "center_0.5",
+    seed_permutation = 124
+  ) %>%
+  dplyr::select(-obs_geary_flipped, -z_geary_flipped, 
+                -null_mean_geary_flipped, -null_sd_geary_flipped, -block_size)
+hex300_export <- hex300_df %>%
+  dplyr::mutate(
+    permutation_scheme = "hex-block",
+    block_size_um = block_size,
+    one_sided = "center_0.5",
+    seed_permutation = 124
+  ) %>%
+  dplyr::select(-obs_geary_flipped, -z_geary_flipped, 
+                -null_mean_geary_flipped, -null_sd_geary_flipped, -block_size)
+
 
 # Moran's I/Geary's C effect sizes across sGSVA vs GSVA vs GSVA-smoothed
 pathways_sub <- rownames(z_sgsva_sub)
@@ -870,16 +960,6 @@ moran_geary_all <- do.call(rbind, lapply(pathways_sub, function(pw){
 write.csv(moran_geary_all, file.path(results_dir, "moran_geary_three_methods.csv"))
 
 
-# ---------------------------
-# reproducibility
-# ---------------------------
-writeLines(
-  capture.output(sessionInfo()),
-  con = file.path(results_dir, "Xenium_sessionInfo.txt")
-)
-
-
-
 library(openxlsx)
 wb <- createWorkbook()
 addWorksheet(wb, "SData5_panel_coverage")
@@ -891,16 +971,15 @@ writeData(wb, "SData5_chemokine_sensitivity", chem_anchoring)
 addWorksheet(wb, "SData5_all_module_concordance")
 writeData(wb, "SData5_all_module_concordance", anchoring_summary)
 addWorksheet(wb, "SData5_global_permutation")
-writeData(wb, "SData5_global_permutation", mc_df)
+writeData(wb, "SData5_global_permutation", mc_export)
 addWorksheet(wb, "SData5_block150_permutation")
-writeData(wb, "SData5_block150_permutation", hex150_df)
+writeData(wb, "SData5_block150_permutation", hex150_export)
 addWorksheet(wb, "SData5_block200_permutation")
-writeData(wb, "SData5_block200_permutation", hex200_df)
+writeData(wb, "SData5_block200_permutation", hex200_export)
 addWorksheet(wb, "SData5_block300_permutation")
-writeData(wb, "SData5_block300_permutation", hex300_df)
+writeData(wb, "SData5_block300_permutation", hex300_export)
+addWorksheet(wb, "SData5_runtime")
+writeData(wb, "SData5_runtime", runtime_results)
 saveWorkbook(wb, file.path(supp_dir, "Supplementary Data 5.xlsx"), overwrite = TRUE)
-
-
-
 
 

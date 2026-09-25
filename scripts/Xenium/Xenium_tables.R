@@ -2,12 +2,12 @@
 library(dplyr)
 library(hexbin)
 
-source("R/sgsva_score.R")
-
 # paths
 project_dir <- "."
 results_dir <- file.path(project_dir, "results", "xenium")
 table_dir <- file.path(project_dir, "results", "tables")
+
+source(file.path(project_dir,"R/sgsva_score.R"))
 
 # generate spatial autocorrelation summary
 moran_geary_all <- read.csv(file.path(results_dir, "moran_geary_three_methods.csv"))
@@ -137,7 +137,7 @@ sensitivity_wide <- sensitivity_long %>%
 
 write.csv(
   sensitivity_wide,
-  file.path(table_dir, "supplementary_Table_S13_xenium_gene_overlap_and_nonoverlap_correlation.csv"),
+  file.path(table_dir, "supplement_Table_S13_xenium_gene_overlap_and_nonoverlap_correlation.csv"),
   row.names = FALSE
 )
 

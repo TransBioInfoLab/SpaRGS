@@ -6,9 +6,6 @@ library(scales)
 library(grid)
 library(hexbin)
 
-source("R/sgsva_score.R")
-source("R/spatial_permutation.R")
-
 # ---------------------------
 # paths
 # ---------------------------
@@ -16,6 +13,9 @@ project_dir <- "."
 data_dir <- file.path(project_dir, "data", "xenium")
 results_dir <- file.path(project_dir, "results", "xenium")
 fig_dir <- file.path(project_dir, "results", "figures")
+
+source(file.path(project_dir,"R/sgsva_score.R"))
+source(file.path(project_dir,"R/spatial_permutation.R"))
 
 
 # ---------------------------
