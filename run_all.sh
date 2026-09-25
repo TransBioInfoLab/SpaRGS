@@ -14,7 +14,12 @@ Rscript scripts/Robustness/robustness_analysis.R
 echo "Running Breast Visium analyses..."
 Rscript scripts/BreastVisium/breast_visium_with_gsdensity.R
 Rscript scripts/BreastVisium/breast_celltype_anchoring_all_methods.R
-Rscript scripts/BreastVisium/breast_visium_enrichmap.R
+Rscript scripts/BreastVisium/breast_visium_export_enrichmap_input.R
+
+conda activate enrichmap_env
+python scripts/BreastVisium/01_enrichmap_breast_visium_pilot.py
+
+Rscript scripts/BreastVisium/breast_visium_evaluate_enrichmap.R
 
 echo "Running DLPFC analyses..."
 Rscript scripts/DLPFC/DLPFC_analysis.R

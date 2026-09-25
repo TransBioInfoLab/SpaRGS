@@ -3,5 +3,5 @@
 
 source("scripts/Simulation/simulation_tables.R")
 source("scripts/Robustness/robustness_tables.R")
-source("scripts/BreastVisium/breast_tables.R")
+source("scripts/BreastVisium/breast_visium_tables.R")
 source("scripts/Xenium/Xenium_tables.R")
