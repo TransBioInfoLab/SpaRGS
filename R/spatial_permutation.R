@@ -379,8 +379,6 @@ hex_block_perm <- function(z, lw, coords, sets, block_size=200,
   # Adjust p-values (FDR)
   pval_moran <- p.adjust(res$p_moran, method = "BH")
   pval_geary <- p.adjust(res$p_geary, method = "BH")
-  res$p_adj_moran <- ifelse(pval_moran < 1/(B+1), paste0("p < ", formatC(1/(B+1), format = "e", digits = 1)), pval_moran)
-  res$p_adj_geary <- ifelse(pval_geary < 1/(B+1), paste0("p < ", formatC(1/(B+1), format = "e", digits = 1)), pval_geary)
   
   return(
     list(res = res, perm_null_res = null_hist)
@@ -455,8 +453,6 @@ run_moran_geary <- function(scores, w, n_perm,
   # Adjust p-values (FDR)
   pval_moran <- p.adjust(results$p_moran, method = "BH")
   pval_geary <- p.adjust(results$p_geary, method = "BH")
-  results$p_adj_moran <- ifelse(pval_moran < 1/(B+1), paste0("p < ", formatC(1/(B+1), format = "e", digits = 1)), pval_moran)
-  results$p_adj_geary <- ifelse(pval_geary < 1/(B+1), paste0("p < ", formatC(1/(B+1), format = "e", digits = 1)), pval_geary)
   
   return(list(
     res = results, perm_null_res = null_hist
@@ -465,7 +461,7 @@ run_moran_geary <- function(scores, w, n_perm,
 
 # --- implementation of early stopping ---
 # Clopper-Pearson bounds
-clopper_bounds <- function(k, t, alpha = 0.05) {
+beta_stop_bounds <- function(k, t, alpha = 0.05) {
   list(
     lower = qbeta(alpha / 2, k + 1, t - k + 1),
     upper = qbeta(1 - alpha / 2, k + 1, t - k + 1)
@@ -479,7 +475,7 @@ permute_within_blocks <- function(x, blocks) {
     perm <- x
     for (b in unique(blocks)) {
       idx <- which(blocks==b)
-      if (length(idx)>1) { perm[idx] <- sample(perm[idx]) }
+      if (length(idx)>1) {perm[idx] <- sample(perm[idx]) }
     }
     return(perm)
   }
@@ -500,7 +496,7 @@ perm_with_early_stop <- function(stat_fun, x, listw, blocks = NULL,
     b <- b + as.integer(s_perm >= obs) # for Geary's C, use wrapper to flip sign
     
     if (t >= t_min) {
-      cb <- clopper_bounds(b, t, alpha)
+      cb <- beta_stop_bounds(b, t, alpha)
       if (cb$lower > alpha) {
         stop_reason <- "non_significant" 
         break} 
