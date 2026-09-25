@@ -2,12 +2,11 @@
 set -eu
 
 echo "Running a minimal example..."
-Rscript scripts/run_example_visium.R
-Rscript scripts/run_example_xenium.R
+Rscript scripts/run_minimal_example.R
 
 echo "Running simulation analyses..."
-Rscript scripts/Simulation/simulation_analysis.R
-Rscript scripts/Simulation/simulation_GSDesnity.R
+Rscript scripts/Simulation/simulation_single_sample_geneset.R
+Rscript scripts/Simulation/simulation_with_gsdesnity.R
 
 echo "Running robustness analyses..."
 Rscript scripts/Robustness/robustness_analysis.R
