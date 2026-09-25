@@ -9,9 +9,6 @@ suppressPackageStartupMessages({
   library(gsdensity); library(CelliD); library(here); library(fs)
 })
 
-source("R/sgsva_score.R")
-source("R/spatial_permutation.R")
-
 set.seed(1)
 
 # ---------------------------
@@ -39,6 +36,9 @@ if (!dir.exists(data_dir)) {
     "and place it in data/breast_visium/."
   )
 }
+
+source(file.path(project_dir, "R", "sgsva_score.R"))
+source(file.path(project_dir, "R", "spatial_permutation.R"))
 
 # ---------------------------
 # load data
@@ -118,7 +118,7 @@ bc_obj <- FindNeighbors(bc_obj, reduction = "pca", dims = 1:30)
 bc_obj <- FindClusters(bc_obj, verbose = FALSE, resolution = 0.5)
 bc_obj <- RunUMAP(bc_obj, reduction = "pca", dims = 1:30)
 
-#saveRDS(bc_obj, file.path(results_dir, "bc_obj.rds"))
+saveRDS(bc_obj, file.path(results_dir, "bc_obj.rds"))
 
 # Compute local enrichment scores
 expr_matrix <- as.matrix(SeuratObject::LayerData(bc_obj, assay = "SCT", layer = "data"))
@@ -142,7 +142,6 @@ saveRDS(
   list(expr_filtered=expr_filtered, coords_um=coords_um),
   file.path(results_dir, "breast_visium_sct_data.rds")
 )
-
 
 # ---------------------------
 # gene sets
@@ -358,17 +357,30 @@ write.csv(stats_table, file.path(results_dir, "region_overlays_meanz_fdr.csv"))
 # ---------------------------
 # spatial permutation
 # ---------------------------
+# global permutation
 t0 <- proc.time()[3]
 sgsva_res <- spatial_permutation(z_sgsva, coords = coords_um, balanced_sets, 
                                  mode = "delaunay", sigma_global = sigma_global, 
                                  one_sided = "center_0.5", perm_methods = c("moran_mc","geary_mc"))
-rt <- proc.time()[3] - t0 # 14542.04 
+rt <- proc.time()[3] - t0 
+print(rt) # 14542.04 
 saveRDS(sgsva_res, file.path(results_dir, "moranmc_res.rds"))
 
 mc_df <- sgsva_res$permutation_results$moran_geary_results$moran_geary_summary
 out_csv <- file.path(results_dir, "moran_geary_pathway_summary.csv")
 readr::write_csv(mc_df, out_csv)
 
+# export output
+mc_export <- mc_df %>%
+  dplyr::mutate(
+    permutation_scheme = "global",
+    one_sided = "center_0.5",
+    seed_permutation = 124
+  ) %>%
+  dplyr::select(-obs_geary_flipped, -z_geary_flipped, 
+                -null_mean_geary_flipped, -null_sd_geary_flipped)
+
+# hex-block permutation
 block_sizes <- c(150, 200, 300)
 block_res <- lapply(block_sizes, function(b) {
   t0 <- proc.time()[3]
@@ -387,6 +399,35 @@ readr::write_csv(hex200_df, file.path(results_dir, "block200_pathway_summary.csv
 
 hex300_df <- block_res[[3]]$permutation_results$hex_block_results$hex_block_summary
 readr::write_csv(hex300_df, file.path(results_dir, "block300_pathway_summary.csv"))
+
+# export output
+hex150_export <- hex150_df %>%
+  dplyr::mutate(
+    permutation_scheme = "hex-block",
+    block_size_um = block_size,
+    one_sided = "center_0.5",
+    seed_permutation = 124
+  ) %>%
+  dplyr::select(-obs_geary_flipped, -z_geary_flipped, 
+                -null_mean_geary_flipped, -null_sd_geary_flipped, -block_size)
+hex200_export <- hex200_df %>%
+  dplyr::mutate(
+    permutation_scheme = "hex-block",
+    block_size_um = block_size,
+    one_sided = "center_0.5",
+    seed_permutation = 124
+  ) %>%
+  dplyr::select(-obs_geary_flipped, -z_geary_flipped, 
+                -null_mean_geary_flipped, -null_sd_geary_flipped, -block_size)
+hex300_export <- hex300_df %>%
+  dplyr::mutate(
+    permutation_scheme = "hex-block",
+    block_size_um = block_size,
+    one_sided = "center_0.5",
+    seed_permutation = 124
+  ) %>%
+  dplyr::select(-obs_geary_flipped, -z_geary_flipped, 
+                -null_mean_geary_flipped, -null_sd_geary_flipped, -block_size)
 
 
 # ---------------------------

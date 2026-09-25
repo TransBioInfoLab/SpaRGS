@@ -13,10 +13,8 @@ suppressPackageStartupMessages({
   library(here)
 })
 
-source("R/sgsva_score.R")
-
 # ------------------------------------------------------------
-# Paths
+# Paths and reproducibility
 # ------------------------------------------------------------
 
 project_dir <- "."
@@ -24,6 +22,8 @@ results_dir   <- file.path(project_dir, "results", "breast_visium")
 anchoring_dir <- file.path(results_dir, "celltype_anchoring")
 pilot_dir     <- file.path(results_dir, "enrichmap_pilot")
 fig_dir       <- file.path(project_dir, "results", "figures")
+
+source(file.path(project_dir,"R/sgsva_score.R"))
 
 # ---------------------------
 # load saved outputs

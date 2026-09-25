@@ -9,13 +9,10 @@ suppressPackageStartupMessages({
   library(readr); library(stringr); library(here); library(fs)
 })
 
-source("R/sgsva_score.R")
-source("R/spatial_permutation.R")
-
 set.seed(1)
 
 # ---------------------------
-# paths
+# paths and reproducibility
 # ---------------------------
 project_dir <- "."
 data_dir <- file.path(project_dir, "data", "breast_visium")
@@ -35,6 +32,9 @@ if (!dir.exists(data_dir)) {
     "and place it in data/breast_visium/."
   )
 }
+
+source(file.path(project_dir, "R/sgsva_score.R"))
+source(file.path(project_dir, "R/spatial_permutation.R"))
 
 
 # ---------------------------
@@ -163,6 +163,7 @@ export_enrichmap_input(
   outdir = pilot_dir,
   prefix = "breast_visium"
 )
+message("Enrichmap scoring runs in 01_enrichmap_breast_visium_pilot.py file")
 
 
 
