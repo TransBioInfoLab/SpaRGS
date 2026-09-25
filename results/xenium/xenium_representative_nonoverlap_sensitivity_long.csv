@@ -1,0 +1,25 @@
+"anchor_label","pathway","module","module_version","method","rho","abs_rho","n_bins"
+"Cell cycle - breast cancer","KEGG_CELL_CYCLE","Breast cancer","Non-overlap module","GSVA",0.00246729095033854,0.00246729095033854,38930
+"Cell cycle - breast cancer","KEGG_CELL_CYCLE","Breast cancer","Original module","GSVA",0.0486132208598559,0.0486132208598559,38930
+"Cell cycle - breast cancer","KEGG_CELL_CYCLE","Breast cancer","Non-overlap module","GSVA-smoothed",0.0414809765539774,0.0414809765539774,38930
+"Cell cycle - breast cancer","KEGG_CELL_CYCLE","Breast cancer","Original module","GSVA-smoothed",0.16406378410646,0.16406378410646,38930
+"Cell cycle - breast cancer","KEGG_CELL_CYCLE","Breast cancer","Non-overlap module","sGSVA",0.228800028746764,0.228800028746764,38930
+"Cell cycle - breast cancer","KEGG_CELL_CYCLE","Breast cancer","Original module","sGSVA",0.481055651913863,0.481055651913863,38930
+"Chemokine - T cells","KEGG_CHEMOKINE_SIGNALING_PATHWAY","T cells","Non-overlap module","GSVA",0.363437296130834,0.363437296130834,38930
+"Chemokine - T cells","KEGG_CHEMOKINE_SIGNALING_PATHWAY","T cells","Original module","GSVA",0.382098696719168,0.382098696719168,38930
+"Chemokine - T cells","KEGG_CHEMOKINE_SIGNALING_PATHWAY","T cells","Non-overlap module","GSVA-smoothed",0.280831728563123,0.280831728563123,38930
+"Chemokine - T cells","KEGG_CHEMOKINE_SIGNALING_PATHWAY","T cells","Original module","GSVA-smoothed",0.299484693638803,0.299484693638803,38930
+"Chemokine - T cells","KEGG_CHEMOKINE_SIGNALING_PATHWAY","T cells","Non-overlap module","sGSVA",-0.488131790206527,0.488131790206527,38930
+"Chemokine - T cells","KEGG_CHEMOKINE_SIGNALING_PATHWAY","T cells","Original module","sGSVA",-0.491251748502235,0.491251748502235,38930
+"Focal adhesion - fibroblasts","KEGG_FOCAL_ADHESION","Fibroblasts","Non-overlap module","GSVA",0.21285383411499,0.21285383411499,38930
+"Focal adhesion - fibroblasts","KEGG_FOCAL_ADHESION","Fibroblasts","Original module","GSVA",0.256395590403632,0.256395590403632,38930
+"Focal adhesion - fibroblasts","KEGG_FOCAL_ADHESION","Fibroblasts","Non-overlap module","GSVA-smoothed",0.00641801704716023,0.00641801704716023,38930
+"Focal adhesion - fibroblasts","KEGG_FOCAL_ADHESION","Fibroblasts","Original module","GSVA-smoothed",0.0183245145510273,0.0183245145510273,38930
+"Focal adhesion - fibroblasts","KEGG_FOCAL_ADHESION","Fibroblasts","Non-overlap module","sGSVA",-0.399844261468802,0.399844261468802,38930
+"Focal adhesion - fibroblasts","KEGG_FOCAL_ADHESION","Fibroblasts","Original module","sGSVA",-0.446965869038537,0.446965869038537,38930
+"VEGF - endothelial","KEGG_VEGF_SIGNALING_PATHWAY","Endothelial cells","Non-overlap module","GSVA",0.110550559920251,0.110550559920251,38930
+"VEGF - endothelial","KEGG_VEGF_SIGNALING_PATHWAY","Endothelial cells","Original module","GSVA",0.110550559920251,0.110550559920251,38930
+"VEGF - endothelial","KEGG_VEGF_SIGNALING_PATHWAY","Endothelial cells","Non-overlap module","GSVA-smoothed",-0.16052671856717,0.16052671856717,38930
+"VEGF - endothelial","KEGG_VEGF_SIGNALING_PATHWAY","Endothelial cells","Original module","GSVA-smoothed",-0.16052671856717,0.16052671856717,38930
+"VEGF - endothelial","KEGG_VEGF_SIGNALING_PATHWAY","Endothelial cells","Non-overlap module","sGSVA",-0.248829144447895,0.248829144447895,38930
+"VEGF - endothelial","KEGG_VEGF_SIGNALING_PATHWAY","Endothelial cells","Original module","sGSVA",-0.248829144447895,0.248829144447895,38930

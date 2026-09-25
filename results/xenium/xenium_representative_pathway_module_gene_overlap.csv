@@ -1,0 +1,5 @@
+"anchor_label","pathway","module","n_pathway_genes","n_module_genes","n_overlap_genes","n_nonoverlap_module_genes","overlap_fraction_pathway","overlap_fraction_module","overlap_genes","nonoverlap_module_genes"
+"Cell cycle - breast cancer","KEGG_CELL_CYCLE","Breast cancer",79,6,2,4,0.0253164556962025,0.333333333333333,"CCND1;MDM2","AR;CDH1;ERBB2;RUNX1"
+"Chemokine - T cells","KEGG_CHEMOKINE_SIGNALING_PATHWAY","T cells",123,17,2,15,0.016260162601626,0.117647058823529,"CCR7;CXCR4","CD274;CD3E;CD3G;CD4;CD8A;CTLA4;GZMA;IL2RA;IL7R;KLRC1;PDCD1;RHOH;SELL;SMAP2;TCF7"
+"VEGF - endothelial","KEGG_VEGF_SIGNALING_PATHWAY","Endothelial cells",48,4,0,4,0,0,"","AKR1C3;AQP1;PECAM1;SOX17"
+"Focal adhesion - fibroblasts","KEGG_FOCAL_ADHESION","Fibroblasts",126,4,2,2,0.0158730158730159,0.5,"IGF1;PDGFRA","PIM1;SFRP4"
