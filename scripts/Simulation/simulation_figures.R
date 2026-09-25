@@ -4,17 +4,17 @@ library(dplyr)
 library(ggplot2)
 library(scales)
 
-source("R/spatial_permutation.R")
-source("R/simulation.R")
-source("R/simulation_scoring.R")
-source("R/evaluation_metrics.R")
-
 # ---------------------------
-# paths
+# paths and reproducibility
 # ---------------------------
 project_dir <- "."
 results_dir <- file.path(project_dir, "results", "simulation")
 fig_dir <- file.path(project_dir, "results", "figures")
+
+source(file.path(project_dir,"R/spatial_permutation.R"))
+source(file.path(project_dir,"R/simulation.R"))
+source(file.path(project_dir,"R/simulation_scoring.R"))
+source(file.path(project_dir,"R/evaluation_metrics.R"))
 
 # ---------------------------
 # load saved outputs
