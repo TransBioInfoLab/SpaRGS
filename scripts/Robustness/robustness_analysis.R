@@ -9,13 +9,8 @@ suppressPackageStartupMessages ({
 
 set.seed(1)
 
-source("R/spatial_permutation.R")
-source("R/simulation.R")
-source("R/simulation_scoring.R")
-source("R/evaluation_metrics.R")
-
 # ---------------------------
-# paths
+# paths and reproducibility
 # ---------------------------
 project_dir <- "."
 results_dir <- file.path(project_dir, "results", "robustness")
@@ -23,6 +18,11 @@ sim_dir <- file.path(project_dir, "results", "simulation")
 supp_dir <- file.path(project_dir, "results", "supplementary_data")
 dir.create(results_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(supp_dir, recursive = TRUE, showWarnings = FALSE)
+
+source(file.path(project_dir, "R/spatial_permutation.R"))
+source(file.path(project_dir, "R/simulation.R"))
+source(file.path(project_dir, "R/simulation_scoring.R"))
+source(file.path(project_dir, "R/evaluation_metrics.R"))
 
 
 # ---------------------------
@@ -83,8 +83,8 @@ for (l in ell) {
 saveRDS(sim_block_res, file.path(results_dir, "sim_block_res.rds"))
 
 # read all simulations
-#sim_set_type <- readRDS(file.path(results_dir, "sim_set_type.rds"))
-#sim_block_res <- readRDS(file.path(results_dir, "sim_block_res.rds"))
+sim_set_type <- readRDS(file.path(results_dir, "sim_set_type.rds"))
+sim_block_res <- readRDS(file.path(results_dir, "sim_block_res.rds"))
 sim_res <- readRDS(file.path(sim_dir, "rep_simulation.rds"))
 
 

@@ -5,17 +5,18 @@ library(ggplot2)
 library(tidyr)
 library(purrr)
 
-source("R/spatial_permutation.R")
-source("R/simulation.R")
-source("R/simulation_scoring.R")
-source("R/evaluation_metrics.R")
-
 # ---------------------------
 # paths
 # ---------------------------
 project_dir <- "."
 results_dir <- file.path(project_dir, "results", "robustness")
 fig_dir <- file.path(project_dir, "results", "figures")
+
+source(file.path(project_dir, "R/spatial_permutation.R"))
+source(file.path(project_dir, "R/simulation.R"))
+source(file.path(project_dir, "R/simulation_scoring.R"))
+source(file.path(project_dir, "R/evaluation_metrics.R"))
+
 
 # ---------------------------
 # load saved outputs
