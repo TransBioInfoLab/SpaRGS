@@ -1,0 +1,25 @@
+method,anchor_label_display,pathway_display,cell_type_display,n,signed_rho,abs_rho,source
+sGSVA,BCR signaling vs B cells,BCR signaling,B cells,4685,-0.7001710738590535,0.7001710738590535,primary_four_method_benchmark
+sGSVA,TCR signaling vs T cells,TCR signaling,T cells,4685,-0.6957921274507192,0.6957921274507192,primary_four_method_benchmark
+sGSVA,Glutathione metabolism vs cancer epithelial,Glutathione metabolism,Cancer epithelial,4685,0.5739302629864313,0.5739302629864313,primary_four_method_benchmark
+sGSVA,Fatty-acid metabolism vs cancer epithelial,Fatty-acid metabolism,Cancer epithelial,4685,0.3855203192494035,0.3855203192494035,primary_four_method_benchmark
+GSVA,BCR signaling vs B cells,BCR signaling,B cells,4685,0.45973113661296217,0.45973113661296217,primary_four_method_benchmark
+GSVA,TCR signaling vs T cells,TCR signaling,T cells,4685,0.5346448745272374,0.5346448745272374,primary_four_method_benchmark
+GSVA,Glutathione metabolism vs cancer epithelial,Glutathione metabolism,Cancer epithelial,4685,0.29601826376682255,0.29601826376682255,primary_four_method_benchmark
+GSVA,Fatty-acid metabolism vs cancer epithelial,Fatty-acid metabolism,Cancer epithelial,4685,0.11397987789931904,0.11397987789931904,primary_four_method_benchmark
+GSVA-smoothed,BCR signaling vs B cells,BCR signaling,B cells,4685,0.5391846135952365,0.5391846135952365,primary_four_method_benchmark
+GSVA-smoothed,TCR signaling vs T cells,TCR signaling,T cells,4685,0.6034218450706813,0.6034218450706813,primary_four_method_benchmark
+GSVA-smoothed,Glutathione metabolism vs cancer epithelial,Glutathione metabolism,Cancer epithelial,4685,0.4053866511937105,0.4053866511937105,primary_four_method_benchmark
+GSVA-smoothed,Fatty-acid metabolism vs cancer epithelial,Fatty-acid metabolism,Cancer epithelial,4685,0.194711846207176,0.194711846207176,primary_four_method_benchmark
+GSDensity,BCR signaling vs B cells,BCR signaling,B cells,4685,0.6753835438746896,0.6753835438746896,primary_four_method_benchmark
+GSDensity,TCR signaling vs T cells,TCR signaling,T cells,4685,0.5665958151835612,0.5665958151835612,primary_four_method_benchmark
+GSDensity,Glutathione metabolism vs cancer epithelial,Glutathione metabolism,Cancer epithelial,4685,-0.1002986981996619,0.1002986981996619,primary_four_method_benchmark
+GSDensity,Fatty-acid metabolism vs cancer epithelial,Fatty-acid metabolism,Cancer epithelial,4685,0.05832425552776352,0.05832425552776352,primary_four_method_benchmark
+EnrichMap-default,BCR signaling vs B cells,BCR signaling,B cells,4685,0.003391362417926372,0.003391362417926372,exploratory_enrichmap_pilot
+EnrichMap-default,TCR signaling vs T cells,TCR signaling,T cells,4685,0.03901122087930022,0.03901122087930022,exploratory_enrichmap_pilot
+EnrichMap-default,Glutathione metabolism vs cancer epithelial,Glutathione metabolism,Cancer epithelial,4685,0.19021466403292603,0.19021466403292603,exploratory_enrichmap_pilot
+EnrichMap-default,Fatty-acid metabolism vs cancer epithelial,Fatty-acid metabolism,Cancer epithelial,4685,0.17118970943917897,0.17118970943917897,exploratory_enrichmap_pilot
+EnrichMap-smooth,BCR signaling vs B cells,BCR signaling,B cells,4685,0.037939576515240166,0.037939576515240166,exploratory_enrichmap_pilot
+EnrichMap-smooth,TCR signaling vs T cells,TCR signaling,T cells,4685,0.11475883713879821,0.11475883713879821,exploratory_enrichmap_pilot
+EnrichMap-smooth,Glutathione metabolism vs cancer epithelial,Glutathione metabolism,Cancer epithelial,4685,0.604970956775359,0.604970956775359,exploratory_enrichmap_pilot
+EnrichMap-smooth,Fatty-acid metabolism vs cancer epithelial,Fatty-acid metabolism,Cancer epithelial,4685,0.535792053796069,0.535792053796069,exploratory_enrichmap_pilot
