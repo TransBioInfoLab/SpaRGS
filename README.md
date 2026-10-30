@@ -55,7 +55,7 @@ Additional packages and operating-system libraries may be needed for specific an
 install.packages(c(
   "Matrix", "matrixStats", "spdep", "sf", "FNN", "msigdbr",
   "Seurat", "hexbin", "ggplot2", "patchwork", "dplyr",
-  "tidyr", "readr", "MASS", "purr", "tibble", "stringr",
+  "tidyr", "readr", "MASS", "purrr", "tibble", "stringr",
   "pROC", "openxlsx", "jsonlite", "ggspatial", "ggpubr",
   "scales", "viridis", "reshape2", "gridExtra", "here", "fs"
 ))
