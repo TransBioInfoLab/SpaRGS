@@ -1,5 +1,5 @@
 # run_all_figures.R
-# Reproduce all main and supplementary figures for the sGSVA manuscript.
+# Reproduce all main and supplementary figures for the SpaRGS manuscript.
 
 source("scripts/Simulation/simulation_figures.R")
 source("scripts/Robustness/robustness_figures.R")

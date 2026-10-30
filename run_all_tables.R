@@ -1,5 +1,5 @@
 # run_all_tables.R
-# Reproduce all main and supplementary tables for the sGSVA manuscript.
+# Reproduce all main and supplementary tables for the SpaRGS manuscript.
 
 source("scripts/Simulation/simulation_tables.R")
 source("scripts/Robustness/robustness_tables.R")
