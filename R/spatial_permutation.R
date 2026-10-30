@@ -2,10 +2,10 @@
 
 ### --- spatial permutation function ---
 spatial_permutation <- function(
-    z_sgsva, coords, balanced_sets,
-    # sgsva parameters
+    z_score, coords, balanced_sets,
+    # parameters
     mode = c("delaunay","knn"), k=6, # mode for neighborhood
-    sigma_global = 200, # global smoothing bandwidth (um in lowres coords)
+    sigma_global = 200, # global smoothing bandwidth
     weight_clip = 0.99, # CV weight clipping quantile
     cor_min = 0.10, # abs(Spearman) threshold for directionality
     # scoring
@@ -30,7 +30,7 @@ spatial_permutation <- function(
   
   # ----- Build spatial neighbors on BIN centroids -----
   coords <- as.data.frame(coords)
-  stopifnot(nrow(coords) == ncol(z_sgsva))
+  stopifnot(nrow(coords) == ncol(z_score))
   
   if (mode == "delaunay") {
     nb <- spdep::tri2nb(coords)
@@ -45,7 +45,7 @@ spatial_permutation <- function(
     message("Dropping ", length(iso), " island spots with no neighbors.")
     keep_idx <- setdiff(seq_len(nrow(coords)), iso)
     coords <- coords[keep_idx, , drop=FALSE]
-    z_sgsva <- z_sgsva[, keep_idx, drop=FALSE]
+    z_score <- z_score[, keep_idx, drop=FALSE]
     if (mode == "delaunay") {
       nb <- spdep::tri2nb(coords)
     } else {
@@ -56,7 +56,7 @@ spatial_permutation <- function(
   lw <- spdep::nb2listw(nb, style="W")
   
   # --- Spatial permutation ---
-  scores <- z_sgsva
+  scores <- z_score
   permutation_results <- list()
   if (early_stop==TRUE) {
     n_pathways <- nrow(scores)

@@ -34,7 +34,12 @@ smooth_expr <- function(expr, coords, sigma=15,
   W <- Matrix::sparseMatrix(i=I, j=J, x=VAL, dims=c(n,n))
   rs <- Matrix::rowSums(W); W <- Matrix::Diagonal(n, 1/pmax(rs, 1e-12)) %*% W
   expr <- as(expr, "dgCMatrix")
+  gene_names <- rownames(expr)
+  spot_names <- colnames(expr)
+  
   expr_smooth <- expr %*% Matrix::t(W)
+  rownames(expr_smooth) <- gene_names
+  colnames(expr_smooth) <- spot_names
   return(expr_smooth)
 }
 
@@ -50,29 +55,53 @@ gene_weights <- function(expr, clip=0.99) {
 # apply correlation-based directionality
 derive_direction_correlation <- function(expr, gene_sets, min_cor = 0.1, min_genes = 15) {
   kept <- list()
+  diag <- vector("list", length(gene_sets))
+  names(diag) <- names(gene_sets)
+  
   for (nm in names(gene_sets)){
     genes <- intersect(gene_sets[[nm]], rownames(expr))
-    if (length(genes)<2){ next }
+    out <- data.frame(
+      pathway = nm,
+      n_genes_input = length(genes),
+      n_up = 0L, n_down = 0L,
+      n_selected = 0L, retained = FALSE,
+      pc1_anchor_cor = NA_real_,
+      min_cor = min_cor, min_genes = min_genes,
+      stringsAsFactors = FALSE
+    )
+    
+    if (length(genes)<2){ 
+      diag[[nm]] <- out
+      next 
+    }
     X <- t(expr[genes, , drop=FALSE])
     pc <- prcomp(X, center=TRUE, scale.=FALSE)
     eig <- pc$x[,1]
     
-    # sign anchoring
+    ## --- SIGN ANCHORING (new) -------------------------------------------------
     anchor <- rowMeans(X)                       # mean pathway expression / location
     a_cor  <- suppressWarnings(cor(eig, anchor, method = "spearman"))
-    if (!is.na(a_cor) && a_cor < 0) eig <- -eig
+    if (!is.na(a_cor) && a_cor < 0) {
+      eig <- -eig
+    }
     
     cors <- apply(X, 2, function(z) suppressWarnings(cor(z, eig, method="spearman")))
     pos <- names(cors)[cors >= min_cor]
     neg <- names(cors)[cors <= -min_cor]
     U <- intersect(pos, rownames(expr))
     D <- intersect(neg, rownames(expr))
-    if (length(U)+length(D) < min_genes) next
+    
+    out$n_up <- length(U)
+    out$n_down <- length(D)
+    out$n_selected <- length(U) + length(D)
+    out$pc1_anchor_cor <- a_cor
+    out$retained <- out$n_selected >= min_genes
+    diag[[nm]] <- out
+    
+    if (length(U) + length(D) < min_genes) next
     kept[[nm]] <- list(U=U, D=D)
   }
-  list(
-    sets = kept
-  )
+  list(sets=kept, diagnostics = dplyr::bind_rows(diag))
 }
 
 # Balancing helper function
@@ -83,8 +112,7 @@ balance_sets <- function(U, D, w, max_n = 25) {
   list(U = U, D = D)
 }
 
-# calculate signed, weighted GSVA
-signed_gsva <- function(expr, split_sets, w, ranks, 
+signed_score <- function(expr, split_sets, w, ranks, 
                         one_sided = c("off", "center_0.5", "center_median")){
   n_p <- length(split_sets); n_s <- ncol(expr)
   out <- matrix(0, nrow=n_p, ncol=n_s,
@@ -121,7 +149,7 @@ signed_gsva <- function(expr, split_sets, w, ranks,
   out
 }
 
-# Apply z-normalization to sGSVA scores
+# Apply z-normalization to SpaRGS scores
 z_normalization <- function(scores) {
   n_pathways <- nrow(scores)
   n_spots <- ncol(scores)
@@ -142,15 +170,15 @@ z_normalization <- function(scores) {
 }
 
 
-# ---- sGSVA ----
+# ---- SpaRGS ----
 # Requirements :
 # - inputs : counts ( genes x spots ), coords (x,y), gene_sets ( list )
 # - returns : score matrix ( pathways x spots )
-run_sgsva <- function(counts, coords, sets, 
+run_spargs <- function(expr, coords, sets, 
                       # smoothing/weighting
                       no_smoothing = FALSE, # remove smoothing
                       mode = c("delaunay","knn"), k = 6, # method for getting neighborhood
-                      sigma_global = 150, # global smoothing bandwidth (um in lowres coords)
+                      sigma_global = 150, # global smoothing bandwidth
                       floor_frac = 0.05, # min non-zero fraction for gene filtering
                       weight_clip = 0.99, # CV weight clipping quantile
                       # correlation direactionality
@@ -160,20 +188,23 @@ run_sgsva <- function(counts, coords, sets,
                       max_n = 25, # maximum balance cap
                       one_sided = c("off", "center_0.5", "center_median") # one-sided options
 ) {
-  # revised version from previous run_sgsva function based on seurat object, Visium data
-  # minimal stand -in: Gaussian - smooth logCPM then rank - based scoring (U minus D)
   directionality <- match.arg(directionality)
   one_sided <- match.arg(one_sided)
   mode <- match.arg(mode)
   
-  G <- nrow(counts); N <- ncol(counts)
-  lib <- colSums(counts)+1
-  lcp <- log1p(t(t(counts)/lib*1e6)) #logCPM
-  expr <- as.matrix(lcp)
+  # Gene-set coverage relative to the supplied pathway definitions
+  n_input <- vapply(sets, function(gs) length(unique(gs)), integer(1))
+  n_available <- vapply(
+    sets, function(gs) length(intersect(unique(gs), rownames(expr))), integer(1)
+  )
   
-  # --- Gene filter ---
-  keep <- rowSums(expr > 0) >= floor(floor_frac * ncol(expr))
-  expr <- expr[keep, , drop = FALSE]
+  pathway_coverage <- data.frame(
+    pathway = names(sets),
+    n_genes_input = unname(n_input),
+    n_genes_available = unname(n_available),
+    coverage_fraction = ifelse(n_input > 0, n_available / n_input, NA_real_),
+    row.names = NULL
+  )
   
   # --- Smoothing ---
   if (no_smoothing == FALSE) {
@@ -195,21 +226,43 @@ run_sgsva <- function(counts, coords, sets,
     sets <- sets
   }
   
-  if (length(sets)==0) {
-    return(list(z_score = 0,gene_sets = sets
+  if (length(sets) == 0) {
+    z_score <- matrix(
+      NA_real_,
+      nrow = 0,
+      ncol = ncol(expr),
+      dimnames = list(character(0), colnames(expr))
+    )
+    return(list(
+      z_score = z_score,
+      gene_sets = sets,
+      weights = w,
+      pathway_coverage = pathway_coverage
     ))
   }
+  
+  # Final number of selected genes after directional filtering and caps
+  pathway_coverage$n_selected <- vapply(
+    pathway_coverage$pathway,
+    function(p) {if (!p %in% names(sets)) return(0L) 
+      length(sets[[p]]$U) + length(sets[[p]]$D)
+    }, integer(1)
+  )
+  
   # --- Rank scaling ---
   ranks <- apply(smoothed, 2, function(x) rank(x, ties.method="average")/length(x))
   rownames(ranks) <- rownames(smoothed)
   
-  # --- sGSVA scoring + z-normalization ---
-  scores <- signed_gsva(smoothed, sets, w, ranks, one_sided = one_sided)
+  # --- scoring + z-normalization ---
+  scores <- signed_score(smoothed, sets, w, ranks, one_sided = one_sided)
   z <- z_normalization(as.matrix(scores))
   
   return(list(
+    scores = scores, 
     z_score = z,
-    gene_sets = sets
+    gene_sets = sets,
+    weights = w,
+    pathway_coverage = pathway_coverage
   ))
 }
 

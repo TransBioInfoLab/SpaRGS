@@ -31,52 +31,6 @@ score_auc_invariant <- function(truth, score) {
   max(auc_fixed, 1 - auc_fixed)
 }
 
-# DeLong tests
-delong_per_pathway <- function(fields, scores, methods = c("sGSVA","GSVA"), q = 0.10, scn) {
-  stopifnot(all(methods %in% names(scores)))
-  
-  s1_obj <- scores[[methods[1]]]
-  s2_obj <- scores[[methods[2]]]
-  # Handle case where one method has no valid scores
-  no_score_1 <- is.null(s1_obj) || (length(s1_obj) == 1 && identical(as.numeric(s1_obj), 0))
-  no_score_2 <- is.null(s2_obj) || (length(s2_obj) == 1 && identical(as.numeric(s2_obj), 0))
-  if (no_score_1 || no_score_2) {
-    temp <- data.frame(
-      pathway = "no pathways passed filter",
-      method1  = methods[1], method2  = methods[2],
-      auc1 = NA_real_, auc2 = NA_real_,
-      auc_diff = NA_real_, p_delong = NA_real_,
-      ci_low = NA_real_, ci_high = NA_real_,
-      ell = scn$ell, sigma_f = scn$sigma_f,
-      up_size = scn$up_size, down_size = scn$down_size
-    )
-    return(temp)
-  }
-  
-  # Only test pathways available in fields and both score matrices
-  paths <- intersect(names(fields), rownames(s1_obj))
-  paths <- intersect(paths, rownames(s2_obj))
-  bind_rows(lapply(paths, function(p) {
-    
-    y <- as.integer(fields[[p]] >= quantile(fields[[p]], 1 - q))  # labels
-    s1 <- as.numeric(scores[[methods[1]]][p,])
-    s2 <- as.numeric(scores[[methods[2]]][p,])
-    r1 <- pROC::roc(y, s1, quiet = TRUE)
-    r2 <- pROC::roc(y, s2, quiet = TRUE)
-    tt <- pROC::roc.test(r1, r2, method = "delong", paired = TRUE)
-    
-    data.frame(
-      pathway  = p,
-      method1  = methods[1], method2  = methods[2],
-      auc1 = as.numeric(pROC::auc(r1)), auc2 = as.numeric(pROC::auc(r2)),
-      auc_diff = as.numeric(pROC::auc(r1) - pROC::auc(r2)),
-      p_delong = tt$p.value,
-      ci_low = tt$conf.int[1], ci_high = tt$conf.int[2],
-      ell = scn$ell, sigma_f = scn$sigma_f,
-      up_size = scn$up_size, down_size = scn$down_size)
-  }))
-}
-
 # make AUROC and spearman metrics for benchmarking with oracle directionality
 eval_metrics <- function(score, method, scn, sim, rt, q=0.1) {
   truth_paths <- names(sim$fields)

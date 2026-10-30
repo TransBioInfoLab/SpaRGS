@@ -21,19 +21,32 @@ rfield <- function(coords, ell=200, sigma_f=1.0) {
 # ---- simulate counts with pathway - driven loadings ----
 simulate_counts <- function(coords, gene_sets, sel_paths, 
                             up=25, down=25, ell=200, sigma_f=1.0,
-                            mean_lib=8000, sd_lib=0.6) {
+                            mean_lib=8000, sd_lib=0.6, cap=5000) {
   N <- nrow(coords)
   # make gene universe
   G <- sort(unique(unlist(gene_sets[sel_paths])))
-  G <- unique(G)[1:min(5000, length(unique(G)))] # cap for seed
+  G <- unique(G)[1:min(cap, length(unique(G)))] # cap for seed
   # choose up/down subsets within each pathway
   pd <- lapply(sel_paths, function(p) {
     genes <- intersect(gene_sets[[p]], G)
+    # No genes from this pathway remain in the simulated universe
+    if (length(genes) == 0) {
+      return(list(U = character(0), D = character(0)))
+    }
     if (length(genes)<(up + down)) genes <- rep(genes, length.out=(up + down))
     U <- sample(genes, up, replace=FALSE)
     avail <- setdiff(genes, U)
-    if (length(avail) < down) avail <- rep(avail, length.out = down)
-    D <- sample(avail, down, replace = FALSE)
+    if (down > 0) {
+      if (length(avail) == 0) {
+        D <- character(0)
+      } else {
+        if (length(avail) < down) {
+          avail <- rep(avail, length.out = down)
+        }
+        D <- sample(avail, down, replace = FALSE)
+      }
+    } else {D <- character(0)}
+    
     list(U=U, D=D)
   })
   names(pd) <- sel_paths
@@ -43,7 +56,6 @@ simulate_counts <- function(coords, gene_sets, sel_paths,
   names(fields) <- sel_paths
   
   # per-gene baselines and dispersions
-  set.seed(2)
   mu_g <- rlnorm(length(G), meanlog=log(0.02), sdlog=1.0) # baseline relative means
   names(mu_g) <- G
   theta_g <- runif(length(G), min=0.5, max=2.0); names(theta_g) <- G
@@ -89,7 +101,6 @@ simulate_counts <- function(coords, gene_sets, sel_paths,
   list(counts = Matrix(X, sparse = TRUE),
        fields = fields,
        per_path = pd,
-       coords = coords,
-       listw = listw)
+       coords = coords)
 }
 
