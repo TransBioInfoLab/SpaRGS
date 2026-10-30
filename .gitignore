@@ -1,0 +1,50 @@
+# SpaRGS: exclude local files, but retain publication figures/tables.
+# Keep source scripts, documentation, metadata, curated CSV summaries,
+# PDF/PNG figures, and data/example/minimal_example_input.rds.
+
+# macOS and editor temporary files
+.DS_Store
+._*
+*~
+*.swp
+*.swo
+
+# R and RStudio local state
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+.Renviron
+
+# Python local state
+__pycache__/
+*.py[cod]
+.venv/
+.ipynb_checkpoints/
+
+# Logs and temporary outputs
+*.log
+nohup.out
+*.tmp
+
+# Downloaded large datasets (not distributed through this repository)
+/data/breast_visium/
+/data/xenium/
+/data/DLPFC/
+/data/dlpfc/
+/data/raw/
+/data/processed/
+
+# Large result objects; curated CSV and PDF/PNG results remain trackable
+/results/**/*.rds
+/results/**/*.RDS
+/results/**/*.RData
+/results/**/*.rda
+/results/**/*.h5
+/results/**/*.h5ad
+/results/**/*.qs
+
+# Local environment credentials
+/.env
+/.env.*
+!/.env.example
