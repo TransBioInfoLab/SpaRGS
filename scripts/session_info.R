@@ -1,10 +1,10 @@
 # scripts/session_info.R
-# Save R session information and package versions for the sGSVA analysis.
+# Save R session information and package versions for the SpaRGS analysis.
 
 session_file <- file.path("results", "session_info.txt")
 package_file <- file.path("results", "package_versions_sgsva.csv")
 
-# Packages used by the sGSVA manuscript workflow.
+# Packages used by the SpaRGS manuscript workflow.
 sgsva_packages <- c(
   "Seurat",
   "GSVA",
@@ -48,7 +48,7 @@ writeLines(
   con = session_file
 )
 
-# Save versions only for packages relevant to the sGSVA workflow.
+# Save versions only for packages relevant to the SpaRGS workflow.
 installed <- installed.packages()
 
 pkg_versions <- data.frame(
@@ -71,5 +71,5 @@ pkg_versions <- data.frame(
 write.csv(pkg_versions, package_file, row.names = FALSE)
 
 message("Wrote session information to: ", session_file)
-message("Wrote sGSVA package versions to: ", package_file)
+message("Wrote SpaRGS package versions to: ", package_file)
 

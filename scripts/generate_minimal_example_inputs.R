@@ -82,14 +82,30 @@ simulate_counts_small <- function(
     )
   }
   
-  # Select simulated up/down genes within each pathway.
-  per_path <- lapply(sel_paths, function(p) {
-    genes <- unique(intersect(gene_sets[[p]], G))
-    U <- sample(genes, up, replace = FALSE)
-    D <- sample(setdiff(genes, U), down, replace = FALSE)
-    list(U = U, D = D)
+  # choose up/down subsets within each pathway
+  pd <- lapply(sel_paths, function(p) {
+    genes <- intersect(gene_sets[[p]], G)
+    # No genes from this pathway remain in the simulated universe
+    if (length(genes) == 0) {
+      return(list(U = character(0), D = character(0)))
+    }
+    if (length(genes)<(up + down)) genes <- rep(genes, length.out=(up + down))
+    U <- sample(genes, up, replace=FALSE)
+    avail <- setdiff(genes, U)
+    if (down > 0) {
+      if (length(avail) == 0) {
+        D <- character(0)
+      } else {
+        if (length(avail) < down) {
+          avail <- rep(avail, length.out = down)
+        }
+        D <- sample(avail, down, replace = FALSE)
+      }
+    } else {D <- character(0)}
+    
+    list(U=U, D=D)
   })
-  names(per_path) <- sel_paths
+  names(pd) <- sel_paths
   
   # One latent spatial field per pathway.
   fields <- lapply(
@@ -105,18 +121,14 @@ simulate_counts_small <- function(
   theta_g <- stats::runif(length(G), min = 0.5, max = 2.0)
   names(theta_g) <- G
   
-  beta_by_path <- lapply(sel_paths, function(p) {
-    b <- setNames(rep(0, length(G)), G)
-    
-    U <- per_path[[p]]$U
-    D <- per_path[[p]]$D
-    
-    b[U] <- stats::rlnorm(length(U), -1.2, 0.5)
-    b[D] <- -stats::rlnorm(length(D), -1.2, 0.5)
-    
-    b
-  })
-  names(beta_by_path) <- sel_paths
+  # gene loadings; positive for up, negative for down
+  beta <- rep(0, length(G)); names(beta) <- G
+  for (p in sel_paths) {
+    U <- intersect(pd[[p]]$U, G)
+    D <- intersect(pd[[p]]$D, G)
+    beta[U] <- beta[U] + rlnorm(length(U), -1.2, 0.5)
+    beta[D] <- beta[D] - rlnorm(length(D), -1.2, 0.5)
+  }
   
   L <- round(
     stats::rlnorm(N, meanlog = log(mean_lib), sdlog = sd_lib)
@@ -126,17 +138,15 @@ simulate_counts_small <- function(
   gy <- scale(coords$y)
   gamma_i <- as.numeric(0.2 * gx - 0.2 * gy)
   
-  # Construct mean matrix.
-  log_mu <- outer(rep(1, N), log(mu_g))
-  
+  # construct mean matrix (N x G) and sample NB counts
+  # log mu_{ig} = log (mu_g) + (sum_p beta_g^{(p)} * f_i^{( p)}) + gamma _i
+  log_mu <- outer(rep(1,N), log(mu_g))
   for (p in sel_paths) {
-    b <- beta_by_path[[p]]
-    genes <- names(b)[b != 0]
-    
-    if (length(genes) > 0L) {
-      log_mu[, genes] <-
-        log_mu[, genes, drop = FALSE] +
-        outer(fields[[p]], b[genes])
+    U <- pd[[p]]$U
+    D <- pd[[p]]$D
+    genes <- intersect(c(U, D), names(mu_g))
+    if (length(genes) > 0) {
+      log_mu[, genes] <- log_mu[, genes] + outer(fields[[p]], beta[genes])
     }
   }
   
@@ -149,10 +159,7 @@ simulate_counts_small <- function(
     0,
     nrow = length(G),
     ncol = N,
-    dimnames = list(
-      G,
-      paste0("spot", seq_len(N))
-    )
+    dimnames = list(G, paste0("spot", seq_len(N)))
   )
   
   for (j in seq_along(G)) {
@@ -162,7 +169,7 @@ simulate_counts_small <- function(
   list(
     counts = Matrix::Matrix(X, sparse = TRUE),
     fields = fields,
-    per_path = per_path,
+    per_path = pd,
     coords = coords
   )
 }

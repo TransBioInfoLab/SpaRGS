@@ -1,23 +1,23 @@
 #!/usr/bin/env Rscript
 
 # ============================================================
-# Minimal reproducibility example for sGSVA
+# Minimal reproducibility example for SpaRGS
 #
-# This script is a lightweight smoke test for a clean sGSVA
+# This script is a lightweight smoke test for a clean SpaRGS
 # installation. To improve cross-platform reproducibility, it
 # uses a frozen small simulated input stored in the repository
 # rather than regenerating the Gaussian field and counts at run time.
 #
 # IMPORTANT:
 # - This is NOT the manuscript benchmark.
-# - It is intended only to verify that the released sGSVA code
+# - It is intended only to verify that the released SpaRGS code
 #   runs end-to-end from a clean clone on fixed inputs.
-# - Run from the root of the sGSVA repository:
+# - Run from the root of the SpaRGS repository:
 #
 #     Rscript scripts/run_minimal_example.R
 #
 # Expected repository files:
-#     R/sgsva_score.R
+#     R/spargs_score.R
 #     R/spatial_permutation.R
 #     data/example/minimal_example_input.rds
 # ============================================================
@@ -31,7 +31,7 @@ set.seed(1)
 input_file <- file.path("data", "example", "minimal_example_input.rds")
 
 required_files <- c(
-  file.path("R", "sgsva_score.R"),
+  file.path("R", "spargs_score.R"),
   file.path("R", "spatial_permutation.R"),
   input_file
 )
@@ -53,7 +53,8 @@ required_packages <- c(
   "Matrix",
   "matrixStats",
   "FNN",
-  "spdep"
+  "spdep",
+  "dplyr"
 )
 
 missing_packages <- required_packages[
@@ -73,7 +74,7 @@ suppressPackageStartupMessages({
   library(spdep)
 })
 
-source(file.path("R", "sgsva_score.R"))
+source(file.path("R", "spargs_score.R"))
 source(file.path("R", "spatial_permutation.R"))
 
 out_dir <- file.path("results", "example")
@@ -181,10 +182,10 @@ expr <- expr[keep, , drop = FALSE]
 message("Genes after filtering: ", nrow(expr))
 
 # ------------------------------------------------------------
-# 4. Run the released sGSVA implementation
+# 4. Run the released SpaRGS implementation
 # ------------------------------------------------------------
 
-sgsva_res <- run_sgsva(
+spa_res <- run_spargs(
   expr = expr,
   coords = coords,
   sets = gene_sets[sel_paths],
@@ -197,34 +198,34 @@ sgsva_res <- run_sgsva(
   one_sided = "center_0.5"
 )
 
-z_sgsva <- as.matrix(sgsva_res$z_score)
+z_spa <- as.matrix(spa_res$z_score)
 
 # ------------------------------------------------------------
 # 5. Validate the score output
 # ------------------------------------------------------------
 
-if (nrow(z_sgsva) == 0L) {
+if (nrow(z_spa) == 0L) {
   stop(
-    "No pathways were retained by data-driven sGSVA in the ",
+    "No pathways were retained by data-driven SpaRGS in the ",
     "minimal example."
   )
 }
 
-if (ncol(z_sgsva) != nrow(coords)) {
+if (ncol(z_spa) != nrow(coords)) {
   stop(
     "Score matrix columns do not match the number of spatial locations."
   )
 }
 
-if (!all(is.finite(z_sgsva))) {
-  stop("Non-finite values were found in the sGSVA score matrix.")
+if (!all(is.finite(z_spa))) {
+  stop("Non-finite values were found in the SpaRGS score matrix.")
 }
 
 message(
-  "sGSVA scoring completed successfully: ",
-  nrow(z_sgsva),
+  "SpaRGS scoring completed successfully: ",
+  nrow(z_spa),
   " retained pathways x ",
-  ncol(z_sgsva),
+  ncol(z_spa),
   " spatial locations."
 )
 
@@ -232,14 +233,14 @@ message(
 # 6. Compare inferred maps with the known simulated fields
 # ------------------------------------------------------------
 
-retained_paths <- intersect(rownames(z_sgsva), names(truth_fields))
+retained_paths <- intersect(rownames(z_spa), names(truth_fields))
 
 truth_summary <- do.call(
   rbind,
   lapply(retained_paths, function(p) {
     rho_signed <- suppressWarnings(
       stats::cor(
-        as.numeric(z_sgsva[p, ]),
+        as.numeric(z_spa[p, ]),
         as.numeric(truth_fields[[p]]),
         method = "spearman"
       )
@@ -266,9 +267,9 @@ if (is.null(truth_summary) || nrow(truth_summary) == 0L) {
 # fast. These are NOT the manuscript inference settings.
 
 perm_res <- spatial_permutation(
-  z_sgsva = z_sgsva,
+  z_score = z_spa,
   coords = coords,
-  balanced_sets = sgsva_res$gene_sets,
+  balanced_sets = spa_res$gene_sets,
   mode = "delaunay",
   sigma_global = sigma_global,
   weight_clip = 0.99,
@@ -307,7 +308,7 @@ write.csv(
 )
 
 write.csv(
-  z_sgsva,
+  z_spa,
   file.path(out_dir, "minimal_example_sgsva_zscores.csv")
 )
 
@@ -327,7 +328,7 @@ saveRDS(
   list(
     normalized_expression = expr,
     selected_pathways = sel_paths,
-    sgsva_results = sgsva_res,
+    sgsva_results = spa_res,
     truth_recovery = truth_summary,
     spatial_permutation = perm_res
   ),
@@ -335,7 +336,7 @@ saveRDS(
 )
 
 summary_lines <- c(
-  "sGSVA fixed-input minimal reproducibility example",
+  "SpaRGS fixed-input minimal reproducibility example",
   paste0("R version: ", R.version.string),
   paste0("Frozen input: ", input_file),
   paste0("Frozen input MD5: ", input_md5),
@@ -343,7 +344,7 @@ summary_lines <- c(
   paste0("Input genes: ", nrow(counts)),
   paste0("Genes after filtering: ", nrow(expr)),
   paste0("Input KEGG pathways: ", length(sel_paths)),
-  paste0("Retained pathways: ", nrow(z_sgsva)),
+  paste0("Retained pathways: ", nrow(z_spa)),
   paste0("ell (um): ", ell),
   paste0("sigma_f: ", sigma_f),
   paste0("Pathway composition: ", up, " up / ", down, " down"),
@@ -352,7 +353,7 @@ summary_lines <- c(
   "Example permutations per statistic: 100",
   paste0(
     "Retained pathway names: ",
-    paste(rownames(z_sgsva), collapse = ", ")
+    paste(rownames(z_spa), collapse = ", ")
   )
 )
 
@@ -371,5 +372,5 @@ message("Truth-recovery summary:")
 print(truth_summary)
 
 message("")
-message("Minimal sGSVA example completed successfully.")
+message("Minimal SpaRGS example completed successfully.")
 message("Outputs written to: ", normalizePath(out_dir, mustWork = FALSE))
