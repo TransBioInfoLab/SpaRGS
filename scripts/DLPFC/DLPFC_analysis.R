@@ -27,7 +27,7 @@ results_dir <- file.path(project_dir, "results", "DLPFC")
 supp_dir <- file.path(project_dir, "results", "supplementary_data")
 dir.create(results_dir, recursive = TRUE, showWarnings = FALSE)
 
-source(file.path(project_dir, "R", "sgsva_score.R"))
+source(file.path(project_dir, "R", "spargs_score.R"))
 source(file.path(project_dir, "R", "spatial_permutation.R"))
 
 set.seed(1)
@@ -190,7 +190,7 @@ dlpfc_preprocessed <- purrr::map(
 saveRDS(dlpfc_preprocessed, file.path(results_dir, "DLPFC_preprocess.rds"))
 
 # ---------------------------
-# Score GSVA and sGSVA
+# Score GSVA and SpaRGS
 # ---------------------------
 sigma_table_um <- sapply(sample_ids, function(id) {
   estimate_sigma_knn(dlpfc_preprocessed[[id]]$coords_um)
@@ -219,7 +219,7 @@ for (id in sample_ids) {
   rt_gsva <- proc.time()[3] - t0
 
   t0 <- proc.time()[3]
-  sgsva_res <- run_sgsva(
+  spa_res <- run_spargs(
     dlpfc_preprocessed[[id]]$expr,
     dlpfc_preprocessed[[id]]$coords_um,
     gene_sets,
@@ -228,12 +228,12 @@ for (id in sample_ids) {
     mode = "delaunay",
     one_sided = "center_0.5"
   )
-  rt_sgsva <- proc.time()[3] - t0
+  rt_spargs <- proc.time()[3] - t0
 
   full_res[[id]] <- list(
     gsva_scores = gsva_scores,
-    sgsva_res = sgsva_res,
-    runtime = list(sgsva = rt_sgsva, gsva = rt_gsva)
+    spargs_res = spa_res,
+    runtime = list(spargs = rt_spargs, gsva = rt_gsva)
   )
 }
 saveRDS(full_res, file.path(results_dir, "full_results_12_samples.rds"))
@@ -243,8 +243,8 @@ run_summary <- bind_rows(lapply(sample_ids, function(id) {
     sample_id = id,
     donor_id = unname(donor_by_section[id]),
     n_spots = ncol(dlpfc_preprocessed[[id]]$expr),
-    n_sgsva_pathways = length(full_res[[id]]$sgsva_res$gene_sets),
-    runtime_sgsva_s = as.numeric(full_res[[id]]$runtime$sgsva),
+    n_spargs_pathways = length(full_res[[id]]$spargs_res$gene_sets),
+    runtime_spargs_s = as.numeric(full_res[[id]]$runtime$spargs),
     runtime_gsva_s = as.numeric(full_res[[id]]$runtime$gsva)
   )
 }))
@@ -256,16 +256,18 @@ write.csv(run_summary, file.path(results_dir, "DLPFC_run_summary.csv"), row.name
 for (id in rev(sample_ids)) {
   message("Spatial inference for section ", id, " ...")
 
-  sgsva_res <- full_res[[id]]$sgsva_res
-  z_sgsva <- sgsva_res$z_score
-  balanced_sets <- sgsva_res$gene_sets
+  spa_res <- full_res[[id]]$spargs_res
+  z_spa <- spa_res$z_score
+  balanced_sets <- spa_res$gene_sets
 
   coords <- dlpfc_preprocessed[[id]]$coords_um
   colnames(coords)[1:2] <- c("x", "y")
   
   t0 <- proc.time()[3]
   global_res <- spatial_permutation(
-    z_sgsva, coords, balanced_sets,
+    z_score = z_spa, 
+    coords = coords, 
+    balanced_sets = balanced_sets,
     mode = "delaunay",
     sigma_global = 151,
     cor_min = 0.2,
@@ -283,7 +285,9 @@ for (id in rev(sample_ids)) {
     
     t0 <- proc.time()[3]
     spatial_permutation(
-      z_sgsva, coords, balanced_sets,
+      z_score = z_spa, 
+      coords = coords, 
+      balanced_sets = balanced_sets,
       mode = "delaunay",
       sigma_global = 151,
       cor_min = 0.2,
@@ -483,8 +487,5 @@ writeData(wb, "SData4_donor_recurrence", donor_recurrence)
 addWorksheet(wb, "SData4_runtime")
 writeData(wb, "SData4_runtime", run_summary)
 saveWorkbook(wb, file.path(supp_dir, "Supplementary Data 4.xlsx"), overwrite = TRUE)
-
-
-
 
 

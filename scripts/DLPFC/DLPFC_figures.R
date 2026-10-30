@@ -22,7 +22,7 @@ results_dir <- file.path(project_dir, "results", "DLPFC")
 fig_dir <- file.path(project_dir, "results", "figures")
 dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
 
-source(file.path(project_dir, "R", "sgsva_score.R"))
+source(file.path(project_dir, "R", "spargs_score.R"))
 
 required_files <- c(
   file.path(results_dir, "full_results_12_samples.rds"),
@@ -67,10 +67,10 @@ top20_hex200 <- read.csv(
 
 # Representative section
 id <- "151673"
-sgsva_res <- full_res[[id]]$sgsva_res
+spa_res <- full_res[[id]]$spargs_res
 gsva_scores <- full_res[[id]]$gsva_scores
 z_gsva <- z_normalization(as.matrix(gsva_scores))
-z_sgsva <- sgsva_res$z_score
+z_spa <- spa_res$z_score
 
 # ---------------------------
 # Helpers
@@ -96,20 +96,20 @@ pretty_kegg_short <- function(x) {
   )
 }
 
-get_spatial_map <- function(z_sgsva, z_gsva, coords, pathway) {
-  stopifnot(pathway %in% rownames(z_sgsva))
+get_spatial_map <- function(z_spa, z_gsva, coords, pathway) {
+  stopifnot(pathway %in% rownames(z_spa))
   stopifnot(pathway %in% rownames(z_gsva))
-  stopifnot(all(coords$spot %in% colnames(z_sgsva)))
+  stopifnot(all(coords$spot %in% colnames(z_spa)))
   stopifnot(all(coords$spot %in% colnames(z_gsva)))
 
   coords <- coords %>%
     mutate(
-      score_sgsva = as.numeric(z_sgsva[pathway, spot]),
+      score_spa = as.numeric(z_spa[pathway, spot]),
       score_gsva = as.numeric(z_gsva[pathway, spot])
     )
 
   lim_max <- quantile(
-    abs(c(coords$score_sgsva, coords$score_gsva)),
+    abs(c(coords$score_spa, coords$score_gsva)),
     probs = 0.98,
     na.rm = TRUE
   )
@@ -136,35 +136,35 @@ get_spatial_map <- function(z_sgsva, z_gsva, coords, pathway) {
       )
   }
 
-  p1 <- base_map("score_sgsva", paste0(pathway_title, " - sGSVA"))
+  p1 <- base_map("score_spa", paste0(pathway_title, " - SpaRGS"))
   p2 <- base_map("score_gsva", paste0(pathway_title, " - GSVA"))
   p1 + p2 + patchwork::plot_layout(ncol = 2, guides = "collect")
 }
 
-plot_violin <- function(z_sgsva, z_gsva, coords, pathway) {
-  stopifnot(pathway %in% rownames(z_sgsva))
+plot_violin <- function(z_spa, z_gsva, coords, pathway) {
+  stopifnot(pathway %in% rownames(z_spa))
   stopifnot(pathway %in% rownames(z_gsva))
-  stopifnot(all(coords$spot %in% colnames(z_sgsva)))
+  stopifnot(all(coords$spot %in% colnames(z_spa)))
   stopifnot(all(coords$spot %in% colnames(z_gsva)))
 
   layer_levels <- c("Layer1", "Layer2", "Layer3", "Layer4", "Layer5", "Layer6", "WM")
 
   coords_long <- coords %>%
     mutate(
-      score_sgsva = as.numeric(z_sgsva[pathway, spot]),
+      score_spa = as.numeric(z_spa[pathway, spot]),
       score_gsva = as.numeric(z_gsva[pathway, spot]),
       layer = factor(as.character(layer), levels = layer_levels)
     ) %>%
     filter(!is.na(layer)) %>%
-    dplyr::select(layer, score_sgsva, score_gsva) %>%
+    dplyr::select(layer, score_spa, score_gsva) %>%
     pivot_longer(
       cols = starts_with("score_"),
       names_to = "method",
       values_to = "score"
     ) %>%
     mutate(
-      method = ifelse(method == "score_sgsva", "sGSVA", "GSVA"),
-      method = factor(method, levels = c("sGSVA", "GSVA"))
+      method = ifelse(method == "score_spa", "SpaRGS", "GSVA"),
+      method = factor(method, levels = c("SpaRGS", "GSVA"))
     )
 
   ggplot(coords_long, aes(x = layer, y = score, fill = method)) +
@@ -174,7 +174,7 @@ plot_violin <- function(z_sgsva, z_gsva, coords, pathway) {
       position = position_dodge(width = 0.8),
       outlier.size = 0.3
     ) +
-    scale_fill_manual(values = c("sGSVA" = "#377eb8", "GSVA" = "#e41a1c")) +
+    scale_fill_manual(values = c("SpaRGS" = "#377eb8", "GSVA" = "#e41a1c")) +
     theme_minimal(base_size = 12) +
     theme(
       axis.text.x = element_text(angle = 45, hjust = 1),
@@ -251,23 +251,23 @@ layer_df <- data.frame(
 )
 coords <- coords %>% left_join(layer_df, by = "spot")
 
-stopifnot(all(coords$spot %in% colnames(z_sgsva)))
+stopifnot(all(coords$spot %in% colnames(z_spa)))
 stopifnot(all(coords$spot %in% colnames(z_gsva)))
 
 cal_map <- get_spatial_map(
-  z_sgsva, z_gsva, coords,
+  z_spa, z_gsva, coords,
   pathway = "KEGG_CALCIUM_SIGNALING_PATHWAY"
 )
 cal_violin <- plot_violin(
-  z_sgsva, z_gsva, coords,
+  z_spa, z_gsva, coords,
   pathway = "KEGG_CALCIUM_SIGNALING_PATHWAY"
 )
 axon_map <- get_spatial_map(
-  z_sgsva, z_gsva, coords,
+  z_spa, z_gsva, coords,
   pathway = "KEGG_AXON_GUIDANCE"
 )
 axon_violin <- plot_violin(
-  z_sgsva, z_gsva, coords,
+  z_spa, z_gsva, coords,
   pathway = "KEGG_AXON_GUIDANCE"
 )
 
@@ -398,19 +398,19 @@ ggsave(
 # Additional DLPFC pathways in section 151673
 # -----------------------------
 oxidat_map <- get_spatial_map(
-  z_sgsva, z_gsva, coords,
+  z_spa, z_gsva, coords,
   pathway = "KEGG_OXIDATIVE_PHOSPHORYLATION"
 )
 chemo_map <- get_spatial_map(
-  z_sgsva, z_gsva, coords,
+  z_spa, z_gsva, coords,
   pathway = "KEGG_CHEMOKINE_SIGNALING_PATHWAY"
 )
 oxidat_violin <- plot_violin(
-  z_sgsva, z_gsva, coords,
+  z_spa, z_gsva, coords,
   pathway = "KEGG_OXIDATIVE_PHOSPHORYLATION"
 )
 chemo_violin <- plot_violin(
-  z_sgsva, z_gsva, coords,
+  z_spa, z_gsva, coords,
   pathway = "KEGG_CHEMOKINE_SIGNALING_PATHWAY"
 )
 
@@ -421,7 +421,7 @@ comb_map <-
   plot_layout(widths = c(1, 0.9), guides = "collect")
 
 ggsave(
-  filename = file.path(fig_dir, "Supplement_Fig_S5_DLPFC_151673_map_violin.pdf"),
+  filename = file.path(fig_dir, "supplement_Fig_S5_DLPFC_151673_map_violin.pdf"),
   plot = comb_map,
   width = 20,
   height = 10
@@ -473,7 +473,7 @@ all_map <- wrap_plots(map_list, ncol = 4, guides = "collect") +
   plot_annotation(tag_levels = "A")
 
 ggsave(
-  filename = file.path(fig_dir, "Supplement_Fig_S6_DLPFC_CALCIUM_maps.pdf"),
+  filename = file.path(fig_dir, "supplement_Fig_S6_DLPFC_CALCIUM_maps.pdf"),
   plot = all_map,
   width = 20,
   height = 15
@@ -558,7 +558,7 @@ comb_hist <-
   plot_annotation(tag_levels = "A")
 
 ggsave(
-  filename = file.path(fig_dir, "Supplement_Fig_S7_DLPFC_151673_null_hist.pdf"),
+  filename = file.path(fig_dir, "supplement_Fig_S7_DLPFC_151673_null_hist.pdf"),
   plot = comb_hist,
   width = 20,
   height = 20
