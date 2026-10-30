@@ -1,0 +1,7 @@
+package,version
+python_executable,/opt/homebrew/Caskroom/miniforge/base/envs/enrichmap_env/bin/python
+python,3.11.15
+numpy,2.4.6
+pandas,2.3.3
+anndata,0.12.19
+enrichmap,0.2.3
