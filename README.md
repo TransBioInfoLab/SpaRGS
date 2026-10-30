@@ -136,6 +136,7 @@ it should not be assumed to include every full-resolution score matrix or permut
 
 ## Manuscript parameter settings
 | Analysis | Scoring graph | Bandwidth\sigma | Directionality threshold | 
+|---|---|---|---|
 | Breast Visium | Delaunay | 150 \mu m | 0.1 | 
 | DLPFC | Delaunay | 151 \mu m | 0.2 | 
 | Xenium | KNN, k=8 | 24 \mu m | 0.1 | 
