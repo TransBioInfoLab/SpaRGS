@@ -1,0 +1,14 @@
+item,value
+n_replicates,20
+n_spots,4900
+grid_nx,70
+grid_ny,70
+pitch,50
+ell_values,"50, 200, 400"
+sigma_f_values,"0.5, 1, 1.5"
+pathway_types,Balanced 25/25 and one-sided 25/0
+selected_pathways,KEGG_CHEMOKINE_SIGNALING_PATHWAY; KEGG_B_CELL_RECEPTOR_SIGNALING_PATHWAY; KEGG_FATTY_ACID_METABOLISM
+smoothing_sigma,floor(ell / sqrt(2))
+primary_metric,AUROC for top 10% active-region recovery
+map_recovery_metric,absolute Spearman correlation with latent spatial field
+retained_matched_definition,all methods restricted to pathway-replicate-scenario cases retained by data-driven sGSVA
