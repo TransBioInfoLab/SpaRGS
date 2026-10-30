@@ -1,0 +1,16 @@
+SpaRGS fixed-input minimal reproducibility example
+R version: R version 4.5.1 (2025-06-13)
+Frozen input: data/example/minimal_example_input.rds
+Frozen input MD5: a8b5763742f6a0c9d932aa7998affb80
+Spatial locations: 144
+Input genes: 360
+Genes after filtering: 360
+Input KEGG pathways: 3
+Retained pathways: 3
+ell (um): 200
+sigma_f: 1.5
+Pathway composition: 25 up / 25 down
+Scoring bandwidth (um): 141
+Spatial inference smoke test: global Moran's I and Geary's C
+Example permutations per statistic: 100
+Retained pathway names: KEGG_CHEMOKINE_SIGNALING_PATHWAY, KEGG_B_CELL_RECEPTOR_SIGNALING_PATHWAY, KEGG_OXIDATIVE_PHOSPHORYLATION
