@@ -1,5 +1,5 @@
 # Cell-type anchoring for breast cancer Visium
-# Methods: sGSVA, GSVA, GSVA-smoothed, and GSDensity
+# Methods: SpaRGS, GSVA, GSVA-smoothed, and GSDensity
 
 suppressPackageStartupMessages({
   library(Matrix); library(spacexr); library(Seurat)
@@ -24,7 +24,7 @@ bc_object_file <- file.path(results_dir, "bc_obj.rds")
 
 # Update any filename that differs in your project.
 score_files <- c(
-  "sGSVA" = file.path(results_dir, "sgsva_scores.csv"),
+  "SpaRGS" = file.path(results_dir, "spargs_scores.csv"),
   "GSVA" = file.path(results_dir, "gsva_scores.csv"),
   "GSVA-smoothed" = file.path(results_dir, "gsva_smoothed_scores.csv"),
   "GSDensity" = file.path(results_dir, "gsdensity_scores.csv")
@@ -546,7 +546,7 @@ anchoring_plot_df <- prespecified_results %>%
   mutate(
     method = factor(
       method,
-      levels = c("GSVA", "GSVA-smoothed", "GSDensity", "sGSVA")
+      levels = c("GSVA", "GSVA-smoothed", "GSDensity", "SpaRGS")
     ),
     anchor_label = factor(
       anchor_label,
@@ -686,7 +686,7 @@ nonzero_counts <- rowSums(expr_matrix > 0)
 expr_filtered <- expr_matrix[nonzero_counts >= floor(0.05 * ncol(expr_matrix)), ]
 
 pathways <- anchor_pairs$pathway
-sgsva_res <- readRDS(file.path(results_dir, "sgsva_score_res.rds"))
+sgsva_res <- readRDS(file.path(results_dir, "spargs_score_res.rds"))
 sgsva_scores <- sgsva_res$scores
 balanced_sets <- sgsva_res$gene_sets
 
@@ -721,9 +721,9 @@ diag_tab <- data.frame(
 )
 for (i in seq_len(length(res_orien))) {
   pathway <- diag_tab$pathway[i]
-  diag_tab$signed_rho[i] <- prespecified_results$rho[prespecified_results$method == "sGSVA" 
+  diag_tab$signed_rho[i] <- prespecified_results$rho[prespecified_results$method == "SpaRGS" 
                                          & prespecified_results$pathway == pathway]
-  diag_tab$abs_rho[i] <- prespecified_results$abs_rho[prespecified_results$method == "sGSVA" 
+  diag_tab$abs_rho[i] <- prespecified_results$abs_rho[prespecified_results$method == "SpaRGS" 
                                                   & prespecified_results$pathway == pathway]
   diag_tab$pos_genes[i] <- length(balanced_sets[[names(res_orien)[i]]]$U)
   diag_tab$neg_genes[i] <- length(balanced_sets[[names(res_orien)[i]]]$D)

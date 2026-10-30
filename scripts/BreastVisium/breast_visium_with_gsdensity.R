@@ -37,7 +37,7 @@ if (!dir.exists(data_dir)) {
   )
 }
 
-source(file.path(project_dir, "R", "sgsva_score.R"))
+source(file.path(project_dir, "R", "spargs_score.R"))
 source(file.path(project_dir, "R", "spatial_permutation.R"))
 
 # ---------------------------
@@ -172,19 +172,19 @@ runtime_results <- bind_rows(runtime_results,
                              tibble(method = "GSVA", runtime = rt))
 
 # ---------------------------
-# sGSVA score
+# SpaRGS score
 # ---------------------------
 sigma_global <- round(estimate_sigma_knn(coords_um)) # 150
 t0 <- proc.time()[3]
-sgsva_res <- run_sgsva(expr_filtered, coords_um, gene_sets, sigma_global = sigma_global, 
+spa_res <- run_spargs(expr_filtered, coords_um, gene_sets, sigma_global = sigma_global, 
                        mode = "delaunay", one_sided = "center_0.5")
 rt <- proc.time()[3] - t0
 runtime_results <- bind_rows(runtime_results,
-                             tibble(method = "sGSVA", runtime = rt))
+                             tibble(method = "SpaRGS", runtime = rt))
 
-sgsva_scores <- sgsva_res$scores
-z_sgsva <- sgsva_res$z_score
-balanced_sets <- sgsva_res$gene_sets
+spa_scores <- spa_res$scores
+z_spa <- spa_res$z_score
+balanced_sets <- spa_res$gene_sets
 
 # ---------------------------
 # GSVA-smoothed score
@@ -308,15 +308,15 @@ runtime_results <- bind_rows(runtime_results, tibble(
 gsdensity_spot_scores <- as.matrix(gsdensity_spot_scores)
 gsdensity_spot_scores <- gsdensity_spot_scores[spots_use,,drop = FALSE]
 
-# Convert to pathways × spots, matching GSVA and sGSVA.
+# Convert to pathways × spots, matching GSVA and SpaRGS.
 gsdensity_scores <- t(gsdensity_spot_scores)
 
 # save all results
 write.csv(gsdensity_scores, file.path(results_dir, "gsdensity_scores.csv"), row.names = TRUE)
 write.csv(runtime_results, file.path(results_dir, "pathway_methods_runtime.csv"), row.names = FALSE)
 
-saveRDS(sgsva_res, file.path(results_dir, "sgsva_score_res.rds"))
-write.csv(sgsva_scores, file.path(results_dir, "sgsva_scores.csv"), row.names = TRUE)
+saveRDS(spa_res, file.path(results_dir, "spargs_score_res.rds"))
+write.csv(spa_scores, file.path(results_dir, "spargs_scores.csv"), row.names = TRUE)
 write.csv(gsva_scores, file.path(results_dir, "gsva_scores.csv"), row.names = TRUE)
 write.csv(gsva_smoothed_scores, file.path(results_dir, "gsva_smoothed_scores.csv"), row.names = TRUE)
 
@@ -325,11 +325,11 @@ write.csv(gsva_smoothed_scores, file.path(results_dir, "gsva_smoothed_scores.csv
 # statistical tests across regions
 # ----------------------------------
 # statistical tests for mean z-score across regions
-t_sgsva <- as.data.frame(t(z_sgsva))
-t_sgsva$barcode <- rownames(t_sgsva)
+t_spa <- as.data.frame(t(z_spa))
+t_spa$barcode <- rownames(t_spa)
 
-merge_dat <- merge(t_sgsva, bc_obj@meta.data[,c("barcode","Classification")], by="barcode")
-results <- lapply(rownames(z_sgsva), function(pathway) {
+merge_dat <- merge(t_spa, bc_obj@meta.data[,c("barcode","Classification")], by="barcode")
+results <- lapply(rownames(z_spa), function(pathway) {
   df <- merge_dat %>% dplyr::select(Classification, !!sym(pathway))
   colnames(df)[2] <- "score"
   
@@ -359,14 +359,14 @@ write.csv(stats_table, file.path(results_dir, "region_overlays_meanz_fdr.csv"))
 # ---------------------------
 # global permutation
 t0 <- proc.time()[3]
-sgsva_res <- spatial_permutation(z_sgsva, coords = coords_um, balanced_sets, 
+spa_res <- spatial_permutation(z_score = z_spa, coords = coords_um, balanced_sets = balanced_sets, 
                                  mode = "delaunay", sigma_global = sigma_global, 
                                  one_sided = "center_0.5", perm_methods = c("moran_mc","geary_mc"))
 rt <- proc.time()[3] - t0 
 print(rt) # 14542.04 
-saveRDS(sgsva_res, file.path(results_dir, "moranmc_res.rds"))
+saveRDS(spa_res, file.path(results_dir, "moranmc_res.rds"))
 
-mc_df <- sgsva_res$permutation_results$moran_geary_results$moran_geary_summary
+mc_df <- spa_res$permutation_results$moran_geary_results$moran_geary_summary
 out_csv <- file.path(results_dir, "moran_geary_pathway_summary.csv")
 readr::write_csv(mc_df, out_csv)
 
@@ -384,7 +384,7 @@ mc_export <- mc_df %>%
 block_sizes <- c(150, 200, 300)
 block_res <- lapply(block_sizes, function(b) {
   t0 <- proc.time()[3]
-  spatial_permutation(z_sgsva, coords = coords_um, balanced_sets, 
+  spatial_permutation(z_score = z_spa, coords = coords_um, balanced_sets = balanced_sets, 
                       mode = "delaunay", sigma_global = sigma_global, one_sided = "center_0.5",
                       perm_methods = c("hex_block"), hex_cellsize = b)
   rt <- proc.time()[3] - t0 #19364.64
@@ -451,7 +451,7 @@ gene_set_coverage_base <- tibble(
 )
 
 score_pathway_sets <- list(
-  sGSVA = normalize_pathway_names(rownames(sgsva_scores)),
+  SpaRGS = normalize_pathway_names(rownames(spa_scores)),
   GSVA = normalize_pathway_names(rownames(gsva_scores)),
   `GSVA-smoothed` = normalize_pathway_names(rownames(gsva_smoothed_scores)),
   GSDensity = normalize_pathway_names(rownames(gsdensity_scores))
@@ -480,7 +480,7 @@ readr::write_csv(
 # Method-wise Moran's I and Geary's C comparisons
 # Collect score matrices
 score_list <- list(
-  sGSVA = as.matrix(sgsva_scores),
+  SpaRGS = as.matrix(spa_scores),
   GSVA = as.matrix(gsva_scores),
   GSVA_smoothed = as.matrix(gsva_smoothed_scores),
   GSDensity = as.matrix(gsdensity_scores)
@@ -556,7 +556,7 @@ readr::write_csv(
 
 # add input harmonization
 main_input_harmonization <- tibble(
-  method = c("sGSVA", "GSVA", "GSVA-smoothed", "GSDensity"),
+  method = c("SpaRGS", "GSVA", "GSVA-smoothed", "GSDensity"),
   count_source = c(
     "Same breast Visium Spatial assay",
     "Same breast Visium Spatial assay",
@@ -570,13 +570,13 @@ main_input_harmonization <- tibble(
     "Method-specific Normalize followed by MCA"
   ),
   retained_spots_before_shared_filter = c(
-    ncol(sgsva_scores),
+    ncol(spa_scores),
     ncol(gsva_scores),
     ncol(gsva_smoothed_scores),
     ncol(gsdensity_scores)
   ),
   retained_pathways_before_shared_filter = c(
-    nrow(sgsva_scores),
+    nrow(spa_scores),
     nrow(gsva_scores),
     nrow(gsva_smoothed_scores),
     nrow(gsdensity_scores)

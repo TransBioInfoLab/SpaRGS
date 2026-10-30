@@ -23,9 +23,9 @@ expr_filtered <- visium_data$expr_filtered
 coords_um <- visium_data$coords_um
 
 # read other pathway comparators
-sgsva_res <- readRDS(file.path(results_dir, "sgsva_score_res.rds"))
-sgsva_scores <- sgsva_res$scores
-balanced_sets <- sgsva_res$gene_sets
+spa_res <- readRDS(file.path(results_dir, "spargs_score_res.rds"))
+spa_scores <- spa_res$scores
+balanced_sets <- spa_res$gene_sets
 gsva_scores <- read.csv(file.path(results_dir, "gsva_scores.csv"),
                         row.names = 1,
                         check.names = FALSE)
@@ -117,7 +117,7 @@ runtime_tab <- rbind(runtime_four_results, runtime_enrichmap)
 
 # get gene-set coverage table
 exploratory_score_list <- list(
-  sGSVA = as.matrix(sgsva_scores),
+  SpaRGS = as.matrix(spa_scores),
   GSVA = as.matrix(gsva_scores),
   `GSVA-smoothed` = as.matrix(gsva_smoothed_scores),
   GSDensity = as.matrix(gsdensity_scores),
@@ -157,7 +157,7 @@ write.csv(coverage_runtime_tab,
           file.path(table_dir, "supplement_Table_S7_breast_coverage_runtime.csv"))
 
 
-# sgsva orientation diagnostics
+# spargs orientation diagnostics
 kegg_gene_sets <- msigdbr(
   species = "Homo sapiens",
   category = "C2",
@@ -171,7 +171,7 @@ pathways <- c("KEGG_B_CELL_RECEPTOR_SIGNALING_PATHWAY",
 
 check_final_orientation <- function(
     pathway,
-    sgsva_scores,
+    spa_scores,
     expr_matrix,
     gene_sets
 ) {
@@ -179,10 +179,10 @@ check_final_orientation <- function(
   
   pathway_mean <- colMeans(expr_matrix[genes, , drop = FALSE],na.rm = TRUE)
   
-  common_spots <- intersect(colnames(sgsva_scores), names(pathway_mean))
+  common_spots <- intersect(colnames(spa_scores), names(pathway_mean))
   
   cor(
-    as.numeric(sgsva_scores[pathway, common_spots]),
+    as.numeric(spa_scores[pathway, common_spots]),
     pathway_mean[common_spots],
     method = "spearman",
     use = "complete.obs"
@@ -190,7 +190,7 @@ check_final_orientation <- function(
 }
 
 res_orien <- sapply(pathways, function(p) 
-  check_final_orientation(p, sgsva_scores, expr_filtered, gene_sets))
+  check_final_orientation(p, spa_scores, expr_filtered, gene_sets))
 
 diag_tab <- data.frame(
   pathway = gsub("KEGG_", "", names(res_orien)), 
@@ -200,23 +200,23 @@ diag_tab <- data.frame(
 )
 for (i in seq_len(length(res_orien))) {
   pathway <- diag_tab$pathway[i]
-  diag_tab$signed_rho[i] <- prespecified_results$rho[prespecified_results$method == "sGSVA" 
+  diag_tab$signed_rho[i] <- prespecified_results$rho[prespecified_results$method == "SpaRGS" 
                                                      & prespecified_results$pathway == pathway]
-  diag_tab$abs_rho[i] <- prespecified_results$abs_rho[prespecified_results$method == "sGSVA" 
+  diag_tab$abs_rho[i] <- prespecified_results$abs_rho[prespecified_results$method == "SpaRGS" 
                                                       & prespecified_results$pathway == pathway]
   diag_tab$pos_genes[i] <- length(balanced_sets[[names(res_orien)[i]]]$U)
   diag_tab$neg_genes[i] <- length(balanced_sets[[names(res_orien)[i]]]$D)
 }
 
 write_csv(diag_tab, 
-          file.path(table_dir, "supplement_Table_S8_breast_sgsva_orientation_diagnostics.csv"))
+          file.path(table_dir, "supplement_Table_S8_breast_spargs_orientation_diagnostics.csv"))
 
 
 # Paired bootstrap CIs for Moran/Geary differences
 bootstrap_paired_spatial_diff <- function(
     dat,
     comparator,
-    reference = "sGSVA",
+    reference = "SpaRGS",
     B = 5000,
     seed = 1
 ) {
@@ -243,7 +243,7 @@ bootstrap_paired_spatial_diff <- function(
       is.finite(.data[[geary_cmp]])
     ) %>%
     mutate(
-      # Positive values favor sGSVA
+      # Positive values favor SpaRGS
       delta_moran = .data[[moran_ref]] - .data[[moran_cmp]],
       delta_geary = .data[[geary_cmp]] - .data[[geary_ref]]
     )
@@ -284,7 +284,7 @@ paired_moran_geary_bootstrap <- purrr::map_dfr(
   ~ bootstrap_paired_spatial_diff(
     dat = spatial_stats,
     comparator = .x,
-    reference = "sGSVA",
+    reference = "SpaRGS",
     B = 5000,
     seed = 1
   )

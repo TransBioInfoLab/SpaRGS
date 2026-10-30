@@ -23,7 +23,7 @@ anchoring_dir <- file.path(results_dir, "celltype_anchoring")
 pilot_dir     <- file.path(results_dir, "enrichmap_pilot")
 fig_dir       <- file.path(project_dir, "results", "figures")
 
-source(file.path(project_dir,"R/sgsva_score.R"))
+source(file.path(project_dir,"R/spargs_score.R"))
 
 # ---------------------------
 # load saved outputs
@@ -32,7 +32,7 @@ bc_obj <- readRDS(file.path(results_dir, "bc_obj.rds"))
 prespecified_results <- read.csv(file.path(anchoring_dir, "anchoring_prespecified_pairs.csv"))
 
 # main comparator scores
-sgsva_scores <- read.csv(file.path(results_dir, "sgsva_scores.csv"), row.names = 1)
+spa_scores <- read.csv(file.path(results_dir, "spargs_scores.csv"), row.names = 1)
 gsva_scores <- read.csv(file.path(results_dir, "gsva_scores.csv"), row.names = 1)
 gsva_smoothed_scores <- read.csv(file.path(results_dir, "gsva_smoothed_scores.csv"), row.names = 1)
 gsdensity_scores <- read.csv(file.path(results_dir, "gsdensity_scores.csv"), row.names = 1)
@@ -68,7 +68,7 @@ normalize_pathway_names <- function(x) {
 }
 
 method_labels <- c(
-  sGSVA = "sGSVA",
+  SpaRGS = "SpaRGS",
   GSVA = "GSVA",
   GSVA_smoothed = "GSVA-smoothed",
   GSDensity = "GSDensity",
@@ -87,7 +87,7 @@ pathway_labels <- c(
 # ------------------------------------------------------------
 
 score_list_all <- list(
-  sGSVA = as.matrix(sgsva_scores),
+  SpaRGS = as.matrix(spa_scores),
   GSVA = as.matrix(gsva_scores),
   GSVA_smoothed = as.matrix(gsva_smoothed_scores),
   GSDensity = as.matrix(gsdensity_scores),
@@ -236,7 +236,7 @@ make_four_method_row <- function(
 # ------------------------------------------------------
 # representative spatial maps
 main_assays <- c(
-  "sGSVA_display",
+  "SpaRGS_display",
   "GSVA_display",
   "GSVA_smoothed_display",
   "GSDensity_display"
@@ -257,7 +257,7 @@ p_fatty_main <- make_four_method_row(
 
 # Pathway-cell-type spatial concordance heatmap
 method_order <- c(
-  "sGSVA",
+  "SpaRGS",
   "GSVA",
   "GSVA-smoothed",
   "GSDensity"
@@ -311,7 +311,7 @@ p_anchor <- ggplot(anchoring_plot_df,
     name = expression("|Spearman " * rho * "|")
   ) +
   scale_x_discrete(
-    labels = c("sGSVA", "GSVA", "GSVA-smoothed", "GSDensity")
+    labels = c("SpaRGS", "GSVA", "GSVA-smoothed", "GSDensity")
   ) +
   labs(
     x = NULL,
@@ -491,7 +491,7 @@ make_pathway_panel <- function(
     )
 }
 supp_assays <- c(
-  "sGSVA_display",
+  "SpaRGS_display",
   "GSVA_display",
   "GSVA_smoothed_display",
   "GSDensity_display",
