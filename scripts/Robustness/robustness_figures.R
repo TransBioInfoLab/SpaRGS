@@ -23,9 +23,7 @@ source(file.path(project_dir, "R/evaluation_metrics.R"))
 # ---------------------------
 # combine bandwidth outputs from oracle and data-driven directionality
 bandwidth_oracle <- read.csv(file.path(results_dir, "abl_bandwidths_aggregate_sum_oracle.csv"))
-bandwidth_oracle$X <- NULL
 bandwidth_data <- read.csv(file.path(results_dir, "abl_bandwidths_aggregate_sum_data_driven.csv"))
-bandwidth_data$X <- NULL
 bandwidth_comb <- bandwidth_oracle %>%
   full_join(bandwidth_data, by=c("pathway","ell","sigma_f","set_type","sigma_param","sigma_global")) %>%
   dplyr::rename(n_oracle=n.x, mean_auroc_oracle=mean_auroc.x,
@@ -38,9 +36,7 @@ bandwidth_comb <- bandwidth_oracle %>%
 
 # combine weight clipping outputs from oracle and data-driven directionality
 clip_oracle <- read.csv(file.path(results_dir, "abl_weight_clipping_aggregate_sum_oracle.csv"))
-clip_oracle$X <- NULL
 clip_data <- read.csv(file.path(results_dir, "abl_weight_clipping_aggregate_sum_data_driven.csv"))
-clip_data$X <- NULL
 clip_comb <- clip_oracle %>%
   full_join(clip_data, by=c("pathway","ell","sigma_f","set_type","weight_clip")) %>%
   dplyr::rename(n_oracle=n.x, mean_auroc_oracle=mean_auroc.x,
@@ -54,11 +50,9 @@ clip_comb <- clip_oracle %>%
 
 # spatial graph output
 res_graph <- read.csv(file.path(results_dir, "abl_spatial_graph_moran_oracle.csv"))
-res_graph$X <- NULL
 
 # block stability output
 res_block <- read.csv(file.path(results_dir, "abl_block_stability_autocorrelation_oracle.csv"))
-res_block$X <- NULL
 
 # -------------------------------
 # ablation main figures
@@ -182,10 +176,10 @@ get_graph_ablation_df <- function(dat) {
     sub <- dat %>% filter(ell == l)
     
     wide <- sub %>%
-      dplyr::select(graph, pathway, z_moran_hex) %>%
-      tidyr::pivot_wider(names_from = graph, values_from = z_moran_hex)
-    rank_mat <- apply(wide[, -1], 2, rank, ties.method = "average", na.last = "keep")
-    cor_mat <- cor(rank_mat, method = "spearman", use = "pairwise.complete.obs")
+      dplyr::select(graph, pathway, obs_moran) %>%
+      tidyr::pivot_wider(names_from = graph, values_from = obs_moran)
+    mat <- as.matrix(wide[, setdiff(names(wide), "pathway"), drop = FALSE])
+    cor_mat <- cor(mat, method = "spearman", use = "pairwise.complete.obs")
     
     as.data.frame(cor_mat) %>%
       tibble::rownames_to_column("row_graph") %>%

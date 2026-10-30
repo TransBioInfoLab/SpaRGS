@@ -1,4 +1,4 @@
-# Ablation analysis
+# Robustness analysis
 suppressPackageStartupMessages ({
   library(Matrix) ; library(matrixStats) ; library(MASS)
   library(dplyr) ; library(tidyr) ; library(purrr) ; 
@@ -32,11 +32,6 @@ source(file.path(project_dir, "R/evaluation_metrics.R"))
 msig <- msigdbr(species = "Homo sapiens", category = "C2", subcollection = "CP:KEGG_LEGACY")
 gene_sets <- split(msig$gene_symbol, msig$gs_name)
 
-# pick a handful for demo ; in the real run , use all sets passing filters
-sel_paths <- c("KEGG_CHEMOKINE_SIGNALING_PATHWAY",
-               "KEGG_B_CELL_RECEPTOR_SIGNALING_PATHWAY",
-               "KEGG_FATTY_ACID_METABOLISM")
-
 coords <- make_hex_grid(nx=70, ny=70, pitch=50)
 N <- nrow(coords)
 
@@ -56,101 +51,87 @@ grid <- tidyr::crossing(
 )
 replicates <- 20
 
-# simulation for two set types with all KEGG pathways
-sel_paths <- names(gene_sets)
-sizes <- tibble::tibble(up_size = c(25, 25),
-                        down_size = c(0, 25))
-grid <- tidyr::crossing(sizes)
-sim_set_type <- NULL
-
-for (g in seq_len(dim(grid)[1])) {
-  up <- grid$up_size[g]
-  down <- grid$down_size[g]
-  sim <- simulate_counts(coords, gene_sets, sel_paths, 
-                         up = up, down = down) # default ell, sigma_f
-  sim_set_type[[paste0("up",up,"_down",down)]] <- sim
-}
-saveRDS(sim_set_type, file.path(results_dir, "sim_set_type.rds"))
-
-# simulation for varied ell with all KEGG pathways
 ell <- c(50, 200, 400)
 sel_paths <- names(gene_sets)
+
+# simulation for varied ell with all KEGG pathways
 sim_block_res <- NULL
-for (l in ell) {
+base_seed <- 2000L
+for (i in seq_along(ell)) {
+  set.seed(base_seed + i)
+  l <- ell[i]
   sim <- simulate_counts(coords, gene_sets, sel_paths, ell=l)
   sim_block_res[[paste0("block",l)]] <- sim
 }
 saveRDS(sim_block_res, file.path(results_dir, "sim_block_res.rds"))
 
 # read all simulations
-sim_set_type <- readRDS(file.path(results_dir, "sim_set_type.rds"))
 sim_block_res <- readRDS(file.path(results_dir, "sim_block_res.rds"))
 sim_res <- readRDS(file.path(sim_dir, "rep_simulation.rds"))
-
 
 # ---------------------------
 # ablation analysis
 # ---------------------------
 # correlation threshold for directionality
-rho <- c(0, 0.05, 0.1, 0.2)
+rho_levels <- c(0, 0.05, 0.10, 0.20)
 res_rho <- NULL
-for (g in seq_len(dim(grid)[1])) {
-  up <- grid$up_size[g]
-  down <- grid$down_size[g]
-  sim <- sim_set_type[[paste0("up",up,"_down",down)]]
+for (r in seq_len(replicates)) {
   
-  t0 <- proc.time()[3]
-  sgsva_res <- run_sgsva(sim$counts, sim$coords, sim$per_path, 
-                         directionality = "oracle", one_sided = "center_0.5")
-  rt0 <- proc.time()[3] - t0
-  sgsva_oracle <- sgsva_res$z_score
+  sim_rep <- sim_res[[paste0("replicate", r)]]
   
-  for (r in rho) {
-    t0 <- proc.time()[3]
-    sgsva_res <- run_sgsva(sim$counts, sim$coords, gene_sets, one_sided = "center_0.5",
-                           directionality = "data-driven", cor_min = r)
-    rt <- proc.time()[3] - t0
-    sgsva_scores <- sgsva_res$z_score
-    final_sets <- sgsva_res$gene_sets
+  for (g in seq_along(sim_rep)) {
     
-    sel_paths <- rownames(sgsva_scores)
-    temp <- data.frame(
-      pathway = sel_paths, rho = r,
-      AUROC_data = NA_real_, AUROC_oracle = NA_real_,
-      auc_diff = NA_real_,
-      AUROC_data_raw = NA_real_, AUROC_oracle_raw = NA_real_,
-      up_size = NA_real_, down_size = NA_real_,
-      true_up = up, true_down = down,
-      times_data_driven = rt, times_oracle = rt0,
-      reduced_paths = length(gene_sets)-length(final_sets),
-      stringsAsFactors = FALSE
-    )
-    for (i in seq_along(sel_paths)) {
-      p <- sel_paths[i]
-      field <- sim$fields[[p]]
-      truth <- top_mask(field, q=0.1)
-      r1 <- pROC::roc(truth, sgsva_scores[p,], levels = c(0,1), direction = "<", quiet = TRUE)
-      r2 <- pROC::roc(truth, sgsva_oracle[p,], levels = c(0,1), direction = "<", quiet = TRUE)
+    scn <- sim_rep[[g]]$scn
+    sim <- sim_rep[[g]]$sim
+    
+    # locCPM and filter the expression matrix
+    counts <- sim$counts
+    G <- nrow(counts); N <- ncol(counts)
+    lib <- colSums(counts)+1
+    lcp <- log1p(t(t(counts)/lib*1e6)) #logCPM
+    expr <- as.matrix(lcp)
+    keep <- rowSums(expr > 0) >= floor(0.05 * ncol(expr))
+    expr <- expr[keep, , drop = FALSE]
+    path_names <- names(sim$per_path)
+    
+    for (rho in rho_levels) {
       
-      auc_data_raw <- as.numeric(pROC::auc(r1))
-      auc_oracle_raw <- as.numeric(pROC::auc(r2))
-      # Orientation-invariant spatial recovery
-      auc_data_inv <- max(auc_data_raw, 1 - auc_data_raw)
-      auc_oracle_inv <- max(auc_oracle_raw, 1 - auc_oracle_raw)
+      t0 <- proc.time()[3]
+      spa_res <- run_spargs(expr, sim$coords, gene_sets[path_names],
+        mode = "delaunay", sigma_global = floor(scn$ell / sqrt(2)),
+        directionality = "data-driven", cor_min = rho, one_sided = "center_0.5"
+      )
+      runtime <- proc.time()[3] - t0
       
-      temp$AUROC_data_raw[i] <- auc_data_raw
-      temp$AUROC_oracle_raw[i] <- auc_oracle_raw
-      temp$AUROC_data[i] <- auc_data_inv
-      temp$AUROC_oracle[i] <- auc_oracle_inv
-      temp$auc_diff[i] <- auc_data_inv - auc_oracle_inv
-      temp$up_size[i] <- length(final_sets[[p]]$U)
-      temp$down_size[i] <- length(final_sets[[p]]$D)
+      spa_scores <- spa_res$z_score
+      retained_paths <- rownames(spa_scores)
+      
+      # Retention should be recorded even when a pathway is not retained
+      for (p in path_names) {
+        retained <- p %in% retained_paths
+        auc <- NA_real_
+        
+        if (retained) {
+          truth <- top_mask(sim$fields[[p]], q = 0.1)
+          auc <- score_auc_invariant(truth, spa_scores[p, ])
+        }
+        
+        res_rho <- rbind(
+          res_rho,
+          data.frame(
+            replicate = r, pathway = p, ell = scn$ell,
+            sigma_f = scn$sigma_f, true_up = scn$up_size,
+            true_down = scn$down_size, rho = rho,
+            retained = retained, AUROC = auc,
+            runtime_seconds = runtime,
+            stringsAsFactors = FALSE
+          )
+        )
+      }
     }
-    res_rho <- rbind(res_rho, temp)
   }
 }
-write.csv(res_rho, file.path(results_dir, "abl_correlation_threshold.csv"))
-
+write.csv(res_rho, file.path(results_dir, "abl_correlation_threshold.csv"), row.names = FALSE)
 
 # bandwidth sensitivity 
 param <- c(1/sqrt(2), 1, 1.5) # (1/sqrt(2), 1, 1.5)*ell
@@ -161,37 +142,48 @@ for (r in 1:replicates) {
   for (g in seq_len(length(sim_rep))) {
     scn <- sim_rep[[g]]$scn
     sim <- sim_rep[[g]]$sim
+    
+    # locCPM and filter the expression matrix
+    counts <- sim$counts
+    G <- nrow(counts); N <- ncol(counts)
+    lib <- colSums(counts)+1
+    lcp <- log1p(t(t(counts)/lib*1e6)) #logCPM
+    expr <- as.matrix(lcp)
+    keep <- rowSums(expr > 0) >= floor(0.05 * ncol(expr))
+    expr <- expr[keep, , drop = FALSE]
+    
     for (p in param) {
       sigma_global <- floor(scn$ell*p)
       path_names <- names(sim$per_path)
-      # get sgsva scores
+      
+      # get spargs scores
       t0 <- proc.time()[3]
-      sgsva_res_oracle <- run_sgsva(sim$counts, sim$coords, sim$per_path, sigma_global = sigma_global, 
-                                    directionality = "oracle", one_sided = "center_0.5")
+      spa_res_oracle <- run_spargs(expr, sim$coords, sim$per_path, mode = "delaunay",
+                                   sigma_global = sigma_global, directionality = "oracle", one_sided = "center_0.5")
       rt <- proc.time()[3] - t0
-      sgsva_scores <- sgsva_res_oracle$z_score
-      sets <- sgsva_res_oracle$gene_sets
-      temp <- eval_metrics_abl(score = sgsva_scores, sets, method = "sGSVA", scn, sim, rt)
+      spa_scores <- spa_res_oracle$z_score
+      sets <- spa_res_oracle$gene_sets
+      temp <- eval_metrics_abl(score = spa_scores, sets, method = "SpaRGS", scn, sim, rt)
       temp$sigma_param <- p
       temp$sigma_global <- sigma_global
       res_sigma_oracle <- rbind(res_sigma_oracle, temp)
       
-      # get sgsva scores
+      # get spargs scores
       t0 <- proc.time()[3]
-      sgsva_res_data <- run_sgsva(sim$counts, sim$coords, gene_sets[path_names], sigma_global = sigma_global, 
-                                  directionality = "data-driven", one_sided = "center_0.5")
+      spa_res_data <- run_spargs(expr, sim$coords, gene_sets[path_names], mode = "delaunay",
+                                 sigma_global = sigma_global, directionality = "data-driven", one_sided = "center_0.5")
       rt <- proc.time()[3] - t0
-      sgsva_scores <- sgsva_res_data$z_score
-      sets <- sgsva_res_data$gene_sets
-      temp <- eval_metrics_abl(score = sgsva_scores, sets, method = "sGSVA", scn, sim, rt)
+      spa_scores <- spa_res_data$z_score
+      sets <- spa_res_data$gene_sets
+      temp <- eval_metrics_abl(score = spa_scores, sets, method = "SpaRGS", scn, sim, rt)
       temp$sigma_param <- p
       temp$sigma_global <- sigma_global
       res_sigma_data <- rbind(res_sigma_data, temp)
     }
   }
 }
-write.csv(res_sigma_oracle, file.path(results_dir, "abl_bandwidths_all_replicates_oracle.csv"))
-write.csv(res_sigma_data, file.path(results_dir, "abl_bandwidths_all_replicates_data_driven.csv"))
+write.csv(res_sigma_oracle, file.path(results_dir, "abl_bandwidths_all_replicates_oracle.csv"), row.names = FALSE)
+write.csv(res_sigma_data, file.path(results_dir, "abl_bandwidths_all_replicates_data_driven.csv"), row.names = FALSE)
 
 bandwidth_sum_oracle <- res_sigma_oracle %>%
   filter(!is.na(AUROC)) %>%
@@ -220,7 +212,7 @@ bandwidth_sum_oracle <- res_sigma_oracle %>%
     .groups = "drop"
   )
 bandwidth_sum_oracle$sigma_param <- factor(bandwidth_sum_oracle$sigma_param, levels = c("1/sqrt(2)*ell", "1*ell", "1.5*ell"))
-write.csv(bandwidth_sum_oracle, file.path(results_dir, "abl_bandwidths_aggregate_sum_oracle.csv"))
+write.csv(bandwidth_sum_oracle, file.path(results_dir, "abl_bandwidths_aggregate_sum_oracle.csv"), row.names = FALSE)
 
 bandwidth_sum_data <- res_sigma_data %>%
   filter(!is.na(AUROC)) %>%
@@ -249,12 +241,12 @@ bandwidth_sum_data <- res_sigma_data %>%
     .groups = "drop"
   )
 bandwidth_sum_data$sigma_param <- factor(bandwidth_sum_data$sigma_param, levels = c("1/sqrt(2)*ell", "1*ell", "1.5*ell"))
-write.csv(bandwidth_sum_data, file.path(results_dir, "abl_bandwidths_aggregate_sum_data_driven.csv"))
+write.csv(bandwidth_sum_data, file.path(results_dir, "abl_bandwidths_aggregate_sum_data_driven.csv"), row.names = FALSE)
 
 
 # CV weight clipping sensitivity
 # helper function
-get_temp <- function(sets, rt, scn, c, sel_paths, sgsva_scores, sim, listw) {
+get_temp <- function(sets, rt, scn, c, sel_paths, spa_scores, sim, listw) {
   if (length(sets)==0) {
     temp <- data.frame(
       pathway = "no pathway passed filter",
@@ -283,10 +275,10 @@ get_temp <- function(sets, rt, scn, c, sel_paths, sgsva_scores, sim, listw) {
       p <- sel_paths[i]
       field <- sim$fields[[p]]
       truth <- top_mask(field, q=0.1)
-      temp$AUROC[i] <- score_auc_invariant(truth, sgsva_scores[p,])
-      temp$MoranI[i] <- moran.test(sgsva_scores[p,], listw)$estimate[1]
+      temp$AUROC[i] <- score_auc_invariant(truth, spa_scores[p,])
+      temp$MoranI[i] <- moran.test(spa_scores[p,], listw)$estimate[1]
       rho_signed <- suppressWarnings(
-        cor(field, sgsva_scores[p, ], method = "spearman", use = "pairwise.complete.obs")
+        cor(field, spa_scores[p, ], method = "spearman", use = "pairwise.complete.obs")
       )
       temp$spearman_signed[i] <- rho_signed
       temp$spearman[i] <- abs(rho_signed)
@@ -305,27 +297,37 @@ for (r in 1:replicates) {
   for (g in seq_len(length(sim_rep))) {
     scn <- sim_rep[[g]]$scn
     sim <- sim_rep[[g]]$sim
+    
+    # locCPM and filter the expression matrix
+    counts <- sim$counts
+    G <- nrow(counts); N <- ncol(counts)
+    lib <- colSums(counts)+1
+    lcp <- log1p(t(t(counts)/lib*1e6)) #logCPM
+    expr <- as.matrix(lcp)
+    keep <- rowSums(expr > 0) >= floor(0.05 * ncol(expr))
+    expr <- expr[keep, , drop = FALSE]
     for (c in clip_param) {
       path_names <- names(sim$per_path)
-      # get sgsva scores
+      
+      # get spargs scores
       t0 <- proc.time()[3]
-      sgsva_res_oracle <- run_sgsva(sim$counts, sim$coords, sim$per_path, weight_clip = c, 
+      spa_res_oracle <- run_spargs(expr, sim$coords, sim$per_path, weight_clip = c, mode = "delaunay",
                                     sigma_global = floor(scn$ell/sqrt(2)), directionality = "oracle", one_sided = "center_0.5")
       rt <- proc.time()[3] - t0
-      sgsva_scores <- sgsva_res_oracle$z_score
-      sets <- sgsva_res_oracle$gene_sets
-      sel_paths <- rownames(sgsva_scores)
-      temp_oracle <- get_temp(sets, rt, scn, c, sel_paths, sgsva_scores, sim, listw)
+      spa_scores <- spa_res_oracle$z_score
+      sets <- spa_res_oracle$gene_sets
+      sel_paths <- rownames(spa_scores)
+      temp_oracle <- get_temp(sets, rt, scn, c, sel_paths, spa_scores, sim, listw)
       
-      # get sgsva scores
+      # get spargs scores
       t0 <- proc.time()[3]
-      sgsva_res_data <- run_sgsva(sim$counts, sim$coords, gene_sets[path_names], weight_clip = c, 
+      spa_res_data <- run_spargs(expr, sim$coords, gene_sets[path_names], weight_clip = c, mode = "delaunay",
                                   sigma_global = floor(scn$ell/sqrt(2)), directionality = "data-driven", one_sided = "center_0.5")
       rt <- proc.time()[3] - t0
-      sgsva_scores <- sgsva_res_data$z_score
-      sets <- sgsva_res_data$gene_sets
-      sel_paths <- rownames(sgsva_scores)
-      temp_data <- get_temp(sets, rt, scn, c, sel_paths, sgsva_scores, sim, listw)
+      spa_scores <- spa_res_data$z_score
+      sets <- spa_res_data$gene_sets
+      sel_paths <- rownames(spa_scores)
+      temp_data <- get_temp(sets, rt, scn, c, sel_paths, spa_scores, sim, listw)
       
       res_clip_oracle <- rbind(res_clip_oracle, temp_oracle)
       res_clip_data <- rbind(res_clip_data, temp_data)
@@ -359,7 +361,7 @@ clip_sum_oracle <- res_clip_oracle %>%
     se_moran = sd(MoranI, na.rm=TRUE)/sqrt(n),
     .groups = "drop"
   )
-write.csv(clip_sum_oracle, file.path(results_dir, "abl_weight_clipping_aggregate_sum_oracle.csv"))
+write.csv(clip_sum_oracle, file.path(results_dir, "abl_weight_clipping_aggregate_sum_oracle.csv"), row.names = FALSE)
 
 clip_sum_data <- res_clip_data %>%
   filter(!is.na(AUROC)) %>%
@@ -384,7 +386,7 @@ clip_sum_data <- res_clip_data %>%
     se_moran = sd(MoranI, na.rm=TRUE)/sqrt(n),
     .groups = "drop"
   )
-write.csv(clip_sum_data, file.path(results_dir, "abl_weight_clipping_aggregate_sum_data_driven.csv"))
+write.csv(clip_sum_data, file.path(results_dir, "abl_weight_clipping_aggregate_sum_data_driven.csv"), row.names = FALSE)
 
 
 # Spatial graph ablation (delaunay vs KNN (k=6,8,12))
@@ -399,33 +401,40 @@ for (l in ell) {
   test_listw <- spdep::nb2listw(test_nb, style = "W")
   hid <- make_hex_ids(sim$coords, cellsize = l)
   
+  # locCPM and filter the expression matrix
+  counts <- sim$counts
+  G <- nrow(counts); N <- ncol(counts)
+  lib <- colSums(counts)+1
+  lcp <- log1p(t(t(counts)/lib*1e6)) #logCPM
+  expr <- as.matrix(lcp)
+  keep <- rowSums(expr > 0) >= floor(0.05 * ncol(expr))
+  expr <- expr[keep, , drop = FALSE]
+  
   for (i in 1:dim(mode_df)[1]) {
     mode <- mode_df$mode[i]
     k <- mode_df$k[i]
     
-    # get sgsva scores (use oracle to isolate graph effects)
-    sgsva_res <- run_sgsva(sim$counts, sim$coords, sim$per_path,
+    # get spargs scores (use oracle to isolate graph effects)
+    spa_res <- run_spargs(expr, sim$coords, sim$per_path,
                            mode = mode, k = k, sigma_global = floor(l/sqrt(2)), 
                            directionality = "oracle", one_sided = "center_0.5")
-    sgsva_scores <- sgsva_res$z_score
+    spa_scores <- spa_res$z_score
     sel_paths <- names(sim$per_path)
     
     df <- vector("list", length(sel_paths))
     
     for (p in seq_along(sel_paths)) {
       pathway <- sel_paths[p]
-      x <- sgsva_scores[pathway,]
+      x <- spa_scores[pathway,]
       
-      set.seed(123)
-      # get hex-block results (fixed Delaunay test graph for fairness)
-      out_moran_hex <- perm_with_early_stop(stat_moran_hex, x, test_listw, hid)
-      # convert results into data.frame
+      obs_moran <- stat_moran(x, test_listw)
+      
       df[[p]] <- data.frame(
-        pathway = pathway, obs_moran = out_moran_hex$obs,
-        z_moran_hex = out_moran_hex$z, p_moran_hex = out_moran_hex$p,
-        mode = mode, k=k,
-        block_size = l, ell = l,
-        sigma_global = floor(l/sqrt(2)),
+        pathway = pathway,
+        obs_moran = obs_moran,
+        mode = mode,
+        k = k, ell = l,
+        sigma_global = floor(l / sqrt(2)),
         stringsAsFactors = FALSE
       )
     }
@@ -442,10 +451,18 @@ write.csv(res_graph,
 l <- 200
 block_sizes <- c(150, 200, 300)
 sim <- sim_block_res[[paste0("block",l)]]
-# get sgsva scores
-sgsva_res <- run_sgsva(sim$counts, sim$coords, sim$per_path, sigma_global = floor(l/sqrt(2)), 
-                       directionality = "oracle", one_sided = "center_0.5")
-sgsva_scores <- sgsva_res$z_score
+# locCPM and filter the expression matrix
+counts <- sim$counts
+G <- nrow(counts); N <- ncol(counts)
+lib <- colSums(counts)+1
+lcp <- log1p(t(t(counts)/lib*1e6)) #logCPM
+expr <- as.matrix(lcp)
+keep <- rowSums(expr > 0) >= floor(0.05 * ncol(expr))
+expr <- expr[keep, , drop = FALSE]
+# get spargs scores
+spa_res <- run_spargs(expr, sim$coords, sim$per_path, mode = "delaunay",
+                      sigma_global = floor(l/sqrt(2)), directionality = "oracle", one_sided = "center_0.5")
+spa_scores <- spa_res$z_score
 sel_paths <- names(sim$per_path)
 test_nb <- spdep::tri2nb(as.matrix(sim$coords))
 test_listw <- spdep::nb2listw(test_nb, style = "W")
@@ -454,21 +471,20 @@ res_block <- NULL
 for (b in block_sizes) {
   hid <- make_hex_ids(sim$coords, cellsize = b)
   df <- vector("list", length(sel_paths))
-  
-  set.seed(123)
+
   for (p in seq_along(sel_paths)) {
     pathway <- sel_paths[p]
-    x <- sgsva_scores[pathway,]
+    x <- spa_scores[pathway,]
     
+    set.seed(123 + p)
     # get hex-block results
     out_moran_hex <- perm_with_early_stop(stat_moran_hex, x, test_listw, hid)
-    out_geary_hex <- perm_with_early_stop(stat_geary_hex, x, test_listw, hid)
+    
     # convert results into data.frame
     df[[p]] <- data.frame(
       pathway = pathway,
       obs_moran = out_moran_hex$obs, z_moran_hex = out_moran_hex$z, 
-      p_moran_hex = out_moran_hex$p, obs_geary = -out_geary_hex$obs, 
-      z_geary_hex = -out_geary_hex$z, p_geary_hex = out_geary_hex$p,
+      p_moran_hex = out_moran_hex$p,
       block_size = b, ell = l,
       sigma_global = floor(l/sqrt(2)),
       stringsAsFactors = FALSE
@@ -495,10 +511,14 @@ library(openxlsx)
 wb <- createWorkbook()
 addWorksheet(wb, "SData2_directionality")
 writeData(wb, "SData2_directionality", res_rho)
-addWorksheet(wb, "SData2_bandwidth")
-writeData(wb, "SData2_bandwidth", res_sigma_data)
-addWorksheet(wb, "SData2_clipping")
-writeData(wb, "SData2_clipping", res_clip_data)
+addWorksheet(wb, "SData2_bandwidth_data_driven")
+writeData(wb, "SData2_bandwidth_data_driven", res_sigma_data)
+addWorksheet(wb, "SData2_bandwidth_oracle")
+writeData(wb, "SData2_bandwidth_oracle", res_sigma_oracle)
+addWorksheet(wb, "SData2_clipping_data_driven")
+writeData(wb, "SData2_clipping_data_driven", res_clip_data)
+addWorksheet(wb, "SData2_clipping_oracle")
+writeData(wb, "SData2_clipping_oracle", res_clip_oracle)
 addWorksheet(wb, "SData2_graph")
 writeData(wb, "SData2_graph", res_graph)
 addWorksheet(wb, "SData2_hex_block")

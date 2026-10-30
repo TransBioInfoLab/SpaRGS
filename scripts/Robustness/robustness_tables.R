@@ -10,7 +10,6 @@ table_dir <- file.path(project_dir, "results", "tables")
 
 # load save output
 res_rho <- read.csv(file.path(results_dir, "abl_correlation_threshold.csv"))
-res_rho$X <- NULL
 
 # ---- gene sets ( MSigDB KEGG legacy ) ----
 msig <- msigdbr(species = "Homo sapiens", category = "C2", subcollection = "CP:KEGG_LEGACY")
@@ -30,7 +29,8 @@ rho_sum <- res_rho %>%
       set_type,
       levels = c("Balanced (25/25)", "One-sided (25/0)")
     ),
-    rho = as.numeric(rho)
+    rho = as.numeric(rho),
+    retained = as.logical(retained)
   ) %>%
   filter(
     !is.na(set_type),
@@ -41,52 +41,52 @@ rho_sum <- res_rho %>%
 retention_summary <- rho_sum %>%
   group_by(set_type, rho) %>%
   summarise(
-    n_kept = n_distinct(pathway),
-    .groups = "drop"
-  ) %>%
-  tidyr::complete(
-    set_type = c("Balanced (25/25)", "One-sided (25/0)"),
-    rho = rho_levels,
-    fill = list(n_kept = 0)
-  ) %>%
-  mutate(
-    n_total = length(gene_sets),
-    retention_rate = n_kept / n_total
+   n_kept = sum(retained, na.rm=TRUE),
+   n_total = n(),
+   retention_rate = n_kept/n_total,
+   .groups = "drop"
   ) 
 
 # AUROC among retained pathways
 auroc_summary <- rho_sum %>%
+  filter(retained, !is.na(AUROC)) %>%
   group_by(set_type, rho) %>%
   summarise(
-    n_evaluable = sum(!is.na(AUROC_data)),
-    mean_auroc = ifelse(
-      n_evaluable > 0,
-      mean(AUROC_data, na.rm = TRUE),
-      NA_real_
-    ),
-    sd_auroc = ifelse(
-      n_evaluable > 1,
-      sd(AUROC_data, na.rm = TRUE),
-      NA_real_
-    ),
-    .groups = "drop"
-  ) %>%
-  dplyr::select(-n_evaluable)
-
-# runtime
-runtime_summary <- rho_sum %>%
-  dplyr::select(set_type, rho, times_data_driven) %>%
-  dplyr::distinct() %>%
-  dplyr::group_by(set_type, rho) %>%
-  dplyr::summarise(
-    runtime_seconds = dplyr::first(times_data_driven),
+    mean_auroc = mean(AUROC, na.rm = TRUE),
+    sd_auroc = sd(AUROC, na.rm = TRUE),
     .groups = "drop"
   )
 
-# combine to table s3
-table_s3 <- retention_summary %>%
+# full-query penalized AUROC (no-retained AUROC=0.5)
+penalized_summary <- rho_sum %>%
+  mutate(
+    AUROC_penalized = ifelse(retained & !is.na(AUROC), AUROC, 0.5)
+  ) %>%
+  group_by(set_type, rho) %>%
+  summarise(
+    mean_auroc_penalized = mean(AUROC_penalized),
+    .groups = "drop"
+  )
+  
+# runtime
+runtime_summary <- rho_sum %>%
+  dplyr::select(replicate, ell, sigma_f, set_type, rho, runtime_seconds) %>%
+  distinct() %>%
+  group_by(set_type, rho) %>%
+  summarise(
+    runtime_seconds = mean(runtime_seconds, na.rm = TRUE),
+    n_runtime_runs = n(),
+    .groups = "drop"
+  )
+
+# Combine main robustness table
+table_s6 <- retention_summary %>%
   left_join(
     auroc_summary,
+    by = c("set_type", "rho")
+  ) %>%
+  left_join(
+    penalized_summary,
     by = c("set_type", "rho")
   ) %>%
   left_join(
@@ -95,6 +95,6 @@ table_s3 <- retention_summary %>%
   ) %>%
   arrange(set_type, rho)
 
-write.csv(table_s3, 
+write.csv(table_s6, 
           file.path(table_dir, "supplement_Table_S6_robustness_correlation_retains.csv"),
           row.names = FALSE)
