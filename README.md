@@ -97,6 +97,21 @@ and output metadata rather than assuming one seed for every workflow.
 
 ## Data access
 
+### Archived supporting analysis outputs
+
+Selected supporting analysis outputs are available in the Zenodo dataset **SpaRGS supporting data: simulation, robustness and spatial
+transcriptomics analyses**, version 1.0:
+
+[https://doi.org/10.5281/zenodo.23844736](https://doi.org/10.5281/zenodo.23844736)
+
+The record contains five ZIP archives covering simulations, robustness analyses, breast Visium, DLPFC, and Xenium, together
+with a README describing their contents and reuse requirements.
+
+Extract the analysis archives into the repository's `results/` directory, preserving their internal folder structure.
+
+Supplementary Data 1–5 and the formatted supplementary figures and tables accompany the manuscript separately. Original raw
+datasets should be obtained from the sources listed below.
+
 ### Public datasets
 
 | Dataset | Source | Expected local path |
@@ -192,13 +207,13 @@ bash run_all.sh
 Verify that this entry point and its prerequisites match the exact release being used. Individual workflows are also located under `scripts/`.
 
 
-### Large figure-source files
+## Large figure-source files
 
 Some manuscript figures require large intermediate objects, including Seurat objects, full pathway-score matrices, 
 or permutation outputs. These are not included in the lightweight repository. When needed, regenerate them from 
 the public input datasets using the corresponding full analysis scripts.
 
-### License and third-party components
+## License and third-party components
 
 Original, independently authored SpaRGS code is provided under the [MIT license](LICENSES/LICENSE).
 
