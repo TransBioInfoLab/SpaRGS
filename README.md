@@ -135,11 +135,10 @@ Supplementary Data 1–5 accompany the manuscript separately. The lightweight re
 it should not be assumed to include every full-resolution score matrix or permutation object.
 
 ## Manuscript parameter settings
-| Analysis | Scoring graph | Bandwidth (σ) | Directionality threshold |
-|---|---|---|---|
-| Breast Visium | Delaunay | 150 µm | 0.1 |
-| DLPFC | Delaunay | 151 µm | 0.2 |
-| Xenium | KNN, k=8 | 24 µm | 0.1 |
+| Analysis | Scoring graph | Bandwidth\sigma | Directionality threshold | 
+| Breast Visium | Delaunay | 150 \mu m | 0.1 | 
+| DLPFC | Delaunay | 151 \mu m | 0.2 | 
+| Xenium | KNN, k=8 | 24 \mu m | 0.1 | 
 
 These analyses used CV-weight clipping at 0.99, a minimum of 15 selected genes, a maximum of 25 genes per directional subset, 
 and the `center_0.5` one-sided convention. Full spatial randomization used 1,000–10,000 permutations with seed 124. 
@@ -199,3 +198,12 @@ Some manuscript figures require large intermediate objects, including Seurat obj
 or permutation outputs. These are not included in the lightweight repository. When needed, regenerate them from 
 the public input datasets using the corresponding full analysis scripts.
 
+### License and third-party components
+
+Original, independently authored SpaRGS code is provided under the [MIT license](LICENSES/LICENSE).
+
+The GSDensity-derived `compute_mca_v5()` functions identified in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) retain
+GPL-3.0-only terms. The complete [GPLv3 license](LICENSES/GPL-3.0-only.txt) is included.
+Applicable GPL obligations also govern any covered combined work; the MIT license does not replace those obligations.
+
+Public datasets and gene-set resources retain their applicable source attribution and reuse terms.
